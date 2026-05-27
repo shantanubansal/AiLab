@@ -106,5 +106,18 @@ End-to-end paths working locally (all verified against a kind cluster):
   vuln findings mark the build `blocked`. `BUILDER_COSIGN_ENABLED=true`
   adds a cosign sign Job (key from `BUILDER_COSIGN_SECRET` Secret, optional
   password via `cosign.password` key in the same Secret).
+- **Secrets** — `POST/GET/DELETE /v1/secrets` (`agentctl secrets`). Values
+  are AES-GCM ciphertext at rest. On run trigger / deploy, api decrypts
+  the manifest's named secrets, creates a k8s `Secret` in the tenant
+  namespace, and the reconciler `EnvFrom`-mounts it into the pod.
+- **Templates** — `python-llm`, `ts-llm`, `mcp-server`, and `container` —
+  `agentctl init <template>` scaffolds.
+- **CI** — `.github/workflows/ci.yml` runs go build/vet/test, helm lint
+  on all three profiles, pytest, node:test, web build, and terraform
+  fmt+validate on every PR.
+- **Production deploy** — Terraform module (`deploy/terraform/aws`) for
+  VPC + EKS + RDS Postgres + S3, plus a release workflow that builds and
+  pushes per-service images + the Helm chart to GHCR on SemVer tags.
+  Walkthrough in `docs/DEPLOY.md`.
 
 See `docs/PLAN.md` for the v1 build order and what's still deferred.

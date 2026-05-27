@@ -103,6 +103,14 @@ func (r *AgentDeploymentReconciler) applyDeployment(ctx context.Context, ad *Age
 		c.Image = ad.Spec.Image
 		c.Ports = []corev1.ContainerPort{{Name: "http", ContainerPort: port, Protocol: corev1.ProtocolTCP}}
 		c.Env = envFromMap(ad.Spec.Env)
+		c.EnvFrom = nil
+		if ad.Spec.SecretRef != "" {
+			c.EnvFrom = []corev1.EnvFromSource{{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: ad.Spec.SecretRef},
+				},
+			}}
+		}
 		c.ReadinessProbe = readinessProbe(ad.Spec.HealthPath, port)
 
 		return controllerutil.SetControllerReference(ad, dep, r.Scheme)

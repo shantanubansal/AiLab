@@ -72,6 +72,7 @@ func (d *DeploymentDispatchConsumer) handleRequested(ctx context.Context, data [
 			Image:      ev.Image,
 			Port:       ev.Port,
 			HealthPath: ev.HealthPath,
+			SecretRef:  ev.SecretRef,
 		},
 	}
 

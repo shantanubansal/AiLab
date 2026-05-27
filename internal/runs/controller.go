@@ -183,6 +183,15 @@ func (r *AgentRunReconciler) buildJob(run *AgentRun, jobName string) *batchv1.Jo
 		env = append(env, corev1.EnvVar{Name: "AGENT_INPUTS", Value: run.Spec.Inputs})
 	}
 
+	var envFrom []corev1.EnvFromSource
+	if run.Spec.SecretRef != "" {
+		envFrom = append(envFrom, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: run.Spec.SecretRef},
+			},
+		})
+	}
+
 	one := int32(1)
 	never := int32(0)
 	return &batchv1.Job{
@@ -215,9 +224,10 @@ func (r *AgentRunReconciler) buildJob(run *AgentRun, jobName string) *batchv1.Jo
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
 					Containers: []corev1.Container{{
-						Name:  "agent",
-						Image: run.Spec.Image,
-						Env:   env,
+						Name:    "agent",
+						Image:   run.Spec.Image,
+						Env:     env,
+						EnvFrom: envFrom,
 					}},
 				},
 			},

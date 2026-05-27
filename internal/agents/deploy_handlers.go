@@ -17,17 +17,22 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"k8s.io/client-go/kubernetes"
+
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
+	"github.com/shantanubansal/AiLab/internal/secrets"
 	"github.com/shantanubansal/AiLab/pkg/events"
 	"github.com/shantanubansal/AiLab/pkg/manifest"
 )
 
 // DeployHandlers wires deploy/undeploy onto an existing chi router.
 type DeployHandlers struct {
-	Repo *Repo
-	Bus  *eventbus.Bus
+	Repo    *Repo
+	Bus     *eventbus.Bus
+	K8s     kubernetes.Interface
+	Secrets *secrets.Repo
 }
 
 // Routes mounts handlers under /v1/agents/{agentId}/deploy.
@@ -70,6 +75,12 @@ func (h *DeployHandlers) deploy(w http.ResponseWriter, r *http.Request) {
 		healthPath = a.Manifest.Server.HealthPath
 	}
 
+	secretRef, err := h.projectSecrets(r.Context(), a.TenantID, a.Name, a.Manifest.Secrets)
+	if err != nil {
+		http.Error(w, "secrets projection: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	pubCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	if err := h.Bus.Publish(pubCtx, events.SubjectDeploymentRequested, events.DeploymentRequested{
@@ -79,12 +90,31 @@ func (h *DeployHandlers) deploy(w http.ResponseWriter, r *http.Request) {
 		Image:      *a.Image,
 		Port:       port,
 		HealthPath: healthPath,
+		SecretRef:  secretRef,
 		At:         time.Now().UTC(),
 	}); err != nil {
 		http.Error(w, "queue: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// projectSecrets resolves manifest.secrets and creates the per-agent
+// k8s Secret in tenant-<id>. Returns the secret name or "" if there's
+// nothing to project.
+func (h *DeployHandlers) projectSecrets(ctx context.Context, tenantID, agentName string, names []string) (string, error) {
+	if len(names) == 0 || h.K8s == nil || h.Secrets == nil {
+		return "", nil
+	}
+	data, err := h.Secrets.Resolve(ctx, tenantID, names)
+	if err != nil {
+		return "", err
+	}
+	mat := &secrets.Materializer{K8s: h.K8s}
+	if err := mat.EnsureTenantNamespace(ctx, tenantID); err != nil {
+		return "", err
+	}
+	return mat.ProjectForAgent(ctx, tenantID, agentName, data)
 }
 
 func (h *DeployHandlers) undeploy(w http.ResponseWriter, r *http.Request) {

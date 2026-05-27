@@ -28,6 +28,7 @@ import (
 	"github.com/shantanubansal/AiLab/internal/eventbus"
 	"github.com/shantanubansal/AiLab/internal/kube"
 	"github.com/shantanubansal/AiLab/internal/runs"
+	"github.com/shantanubansal/AiLab/internal/secrets"
 	"github.com/shantanubansal/AiLab/internal/triggers"
 	"github.com/shantanubansal/AiLab/internal/usage"
 )
@@ -65,6 +66,7 @@ func main() {
 	}
 	triggerRepo := triggers.NewRepo(pool, box)
 	buildRepo := builds.NewRepo(pool)
+	secretRepo := secrets.NewRepo(pool, box)
 
 	// k8s client is optional — without it the api still serves CRUD but
 	// GET /v1/runs/{id}/logs returns 503. Failing to load it should not
@@ -122,16 +124,19 @@ func main() {
 		agentH := &agents.Handlers{Repo: agentRepo}
 		r.Route("/agents", agentH.Routes)
 
-		deployH := &agents.DeployHandlers{Repo: agentRepo, Bus: bus}
+		deployH := &agents.DeployHandlers{Repo: agentRepo, Bus: bus, K8s: k8sClient, Secrets: secretRepo}
 		r.Route("/agents/{agentId}/deploy", deployH.Routes)
 
-		runH := &runs.Handlers{Runs: runRepo, Agents: agentRepo, Bus: bus, K8s: k8sClient}
+		runH := &runs.Handlers{Runs: runRepo, Agents: agentRepo, Bus: bus, K8s: k8sClient, Secrets: secretRepo}
 		runH.Routes(r)
 
 		r.Route("/agents/{agentId}/triggers", triggerH.AuthRoutes)
 
 		buildH := &builds.Handlers{Builds: buildRepo, Agents: agentRepo, Bus: bus}
 		r.Route("/agents/{agentId}/builds", buildH.Routes)
+
+		secretH := &secrets.Handlers{Repo: secretRepo}
+		r.Route("/secrets", secretH.Routes)
 	})
 
 	srv := &http.Server{

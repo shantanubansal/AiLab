@@ -44,6 +44,12 @@ export type Build = {
   endedAt?: string;
 };
 
+export type SecretRef = {
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export class APIError extends Error {
   constructor(public readonly status: number, public readonly body: string) {
     super(`api ${status}: ${body}`);
@@ -171,6 +177,20 @@ export class Client {
   // ---- Builds ----
   createBuild(agentId: string, sourceUrl: string): Promise<Build> {
     return this.request<Build>("POST", `/v1/agents/${agentId}/builds`, { sourceUrl });
+  }
+
+  // ---- Secrets ----
+  async listSecrets(): Promise<SecretRef[]> {
+    const { secrets } = await this.request<{ secrets: SecretRef[] }>("GET", "/v1/secrets");
+    return secrets;
+  }
+
+  setSecret(name: string, value: string): Promise<SecretRef> {
+    return this.request<SecretRef>("POST", "/v1/secrets", { name, value });
+  }
+
+  async deleteSecret(name: string): Promise<void> {
+    await this.request<void>("DELETE", `/v1/secrets/${name}`);
   }
 
   // ---- internals ----

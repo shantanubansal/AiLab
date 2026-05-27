@@ -35,6 +35,7 @@ spec:
                 secrets:
                   type: array
                   items: { type: string }
+                secretRef: { type: string }
             status:
               type: object
               properties:

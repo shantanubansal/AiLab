@@ -23,15 +23,17 @@ import (
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
+	"github.com/shantanubansal/AiLab/internal/secrets"
 	"github.com/shantanubansal/AiLab/pkg/events"
 )
 
 // Handlers exposes the run HTTP surface.
 type Handlers struct {
-	Runs   *Repo
-	Agents *agents.Repo
-	Bus    *eventbus.Bus
-	K8s    kubernetes.Interface
+	Runs    *Repo
+	Agents  *agents.Repo
+	Bus     *eventbus.Bus
+	K8s     kubernetes.Interface
+	Secrets *secrets.Repo
 }
 
 // Routes mounts run handlers on a chi router rooted at /v1.
@@ -140,25 +142,58 @@ func (h *Handlers) trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Project the agent's manifest.secrets into a per-run k8s Secret in
+	// the tenant namespace. Empty list → no Secret, no SecretRef.
+	secretRef, err := h.projectSecrets(r.Context(), id.TenantID, agent.Manifest.Secrets, "run", run.ID)
+	if err != nil {
+		http.Error(w, "secrets projection: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// Publish to the bus. If publish fails after the row is written, the
 	// run sits in 'pending' — surfacing as an obvious stuck state in the UI.
 	// A janitor job (out of v1 spine scope) can republish those.
 	pubCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	if err := h.Bus.Publish(pubCtx, events.SubjectRunRequested, events.RunRequested{
-		TenantID: id.TenantID,
-		AgentID:  agent.ID,
-		RunID:    run.ID,
-		Image:    *agent.Image,
-		Inputs:   req.Inputs,
-		TraceID:  traceID,
-		At:       time.Now().UTC(),
+		TenantID:  id.TenantID,
+		AgentID:   agent.ID,
+		RunID:     run.ID,
+		Image:     *agent.Image,
+		Inputs:    req.Inputs,
+		TraceID:   traceID,
+		SecretRef: secretRef,
+		At:        time.Now().UTC(),
 	}); err != nil {
 		http.Error(w, "queue: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 
 	writeJSON(w, http.StatusAccepted, toDTO(run))
+}
+
+// projectSecrets resolves manifest.secrets from the secrets repo, materializes
+// a k8s Secret, and returns its name. Returns "" when there are no secrets
+// to project or when the api lacks a k8s client / secrets repo.
+func (h *Handlers) projectSecrets(ctx context.Context, tenantID string, names []string, kind, id string) (string, error) {
+	if len(names) == 0 || h.K8s == nil || h.Secrets == nil {
+		return "", nil
+	}
+	data, err := h.Secrets.Resolve(ctx, tenantID, names)
+	if err != nil {
+		return "", err
+	}
+	mat := &secrets.Materializer{K8s: h.K8s}
+	if err := mat.EnsureTenantNamespace(ctx, tenantID); err != nil {
+		return "", err
+	}
+	switch kind {
+	case "run":
+		return mat.ProjectForRun(ctx, tenantID, id, data)
+	case "agent":
+		return mat.ProjectForAgent(ctx, tenantID, id, data)
+	}
+	return "", nil
 }
 
 func (h *Handlers) get(w http.ResponseWriter, r *http.Request) {

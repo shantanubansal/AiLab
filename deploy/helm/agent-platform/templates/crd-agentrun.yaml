@@ -33,6 +33,7 @@ spec:
                 secrets:
                   type: array
                   items: { type: string }
+                secretRef: { type: string }
                 cpu: { type: string }
                 memory: { type: string }
                 timeout: { type: string }

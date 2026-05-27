@@ -1,0 +1,19 @@
+schemaVersion: v1
+name: hello-mcp
+mode: server
+runtime: python
+
+server:
+  port: 8080
+  healthPath: /healthz
+  idleTimeout: 30s
+
+# Mounted as env vars at deploy time.
+secrets: []
+
+resources:
+  cpu: "200m"
+  memory: "256Mi"
+
+# Long-running agents don't take Triggers in v1 — they're invoked
+# directly via the gateway-routed public URL.

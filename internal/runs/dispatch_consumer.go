@@ -76,6 +76,7 @@ func (d *DispatchConsumer) handle(ctx context.Context, data []byte) error {
 			Image:     ev.Image,
 			Inputs:    inputsJSON,
 			TraceID:   ev.TraceID,
+			SecretRef: ev.SecretRef,
 		},
 	}
 	if err := d.Client.Create(ctx, cr); err != nil {

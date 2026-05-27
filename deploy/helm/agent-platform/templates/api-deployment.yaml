@@ -18,6 +18,7 @@ spec:
         {{- include "agent-platform.labels" . | nindent 8 }}
         app.kubernetes.io/component: api
     spec:
+      serviceAccountName: {{ include "agent-platform.fullname" . }}-api
       containers:
         - name: api
           image: {{ include "agent-platform.image" (dict "Values" .Values "component" "api") }}
@@ -72,4 +73,39 @@ spec:
     - name: http
       port: {{ .Values.api.service.port }}
       targetPort: {{ .Values.api.service.targetPort }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-api
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-api
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "create"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agent-platform.fullname" . }}-api
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agent-platform.fullname" . }}-api
+    namespace: {{ .Release.Namespace }}
 {{- end }}

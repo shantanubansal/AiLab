@@ -1,0 +1,30 @@
+schemaVersion: v1
+name: hello-llm-ts
+mode: job
+runtime: typescript
+
+inputs:
+  type: object
+  required: [question]
+  properties:
+    question:
+      type: string
+
+outputs:
+  type: object
+  required: [answer]
+  properties:
+    answer:
+      type: string
+
+# Mounted as env vars via the platform's secrets pipeline.
+secrets:
+  - ANTHROPIC_API_KEY
+
+resources:
+  cpu: "500m"
+  memory: "512Mi"
+  timeout: "5m"
+
+triggers:
+  - kind: manual

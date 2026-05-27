@@ -224,6 +224,19 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SecretRef" }
 
+  /v1/secrets/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [secrets]
+      summary: Delete a secret by name
+      responses:
+        "204": { description: deleted }
+        "404": { description: not found }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -305,3 +318,4 @@ components:
       properties:
         name: { type: string }
         createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }

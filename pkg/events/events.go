@@ -22,13 +22,14 @@ const (
 // RunRequested fires after the api persists a Run row with status=pending.
 // The controller consumes it to create an AgentRun CRD.
 type RunRequested struct {
-	TenantID string         `json:"tenantId"`
-	AgentID  string         `json:"agentId"`
-	RunID    string         `json:"runId"`
-	Image    string         `json:"image"`   // resolved, signed image reference
-	Inputs   map[string]any `json:"inputs"`  // arbitrary input JSON, validated by api
-	TraceID  string         `json:"traceId"` // propagated to user code via AGENT_TRACE_ID
-	At       time.Time      `json:"at"`
+	TenantID  string         `json:"tenantId"`
+	AgentID   string         `json:"agentId"`
+	RunID     string         `json:"runId"`
+	Image     string         `json:"image"`              // resolved, signed image reference
+	Inputs    map[string]any `json:"inputs"`             // arbitrary input JSON, validated by api
+	TraceID   string         `json:"traceId"`            // propagated to user code via AGENT_TRACE_ID
+	SecretRef string         `json:"secretRef,omitempty"` // k8s Secret name in tenant ns, EnvFrom-mounted into pod
+	At        time.Time      `json:"at"`
 }
 
 // RunStarted fires when the pod backing a run transitions to Running.
@@ -86,13 +87,14 @@ const (
 // brought up as a long-running Deployment + Service. The controller
 // materializes it into an AgentDeployment CR.
 type DeploymentRequested struct {
-	TenantID  string    `json:"tenantId"`
-	AgentID   string    `json:"agentId"`
-	AgentName string    `json:"agentName"`
-	Image     string    `json:"image"`
-	Port      int32     `json:"port"`
-	HealthPath string   `json:"healthPath,omitempty"`
-	At        time.Time `json:"at"`
+	TenantID   string    `json:"tenantId"`
+	AgentID    string    `json:"agentId"`
+	AgentName  string    `json:"agentName"`
+	Image      string    `json:"image"`
+	Port       int32     `json:"port"`
+	HealthPath string    `json:"healthPath,omitempty"`
+	SecretRef  string    `json:"secretRef,omitempty"` // k8s Secret name to EnvFrom-mount
+	At         time.Time `json:"at"`
 }
 
 // DeploymentStopped is published when an agent's long-running deployment

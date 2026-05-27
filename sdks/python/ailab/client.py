@@ -133,3 +133,13 @@ class Client:
         return self._request(
             "POST", f"/v1/agents/{agent_id}/builds", json={"sourceUrl": source_url}
         )
+
+    # ---- Secrets ----
+    def list_secrets(self) -> list[dict[str, Any]]:
+        return self._request("GET", "/v1/secrets")["secrets"]
+
+    def set_secret(self, name: str, value: str) -> dict[str, Any]:
+        return self._request("POST", "/v1/secrets", json={"name": name, "value": value})
+
+    def delete_secret(self, name: str) -> None:
+        self._request("DELETE", f"/v1/secrets/{name}")

@@ -44,10 +44,14 @@ type AgentRunSpec struct {
 	Inputs    string            `json:"inputs,omitempty"` // JSON string passed via stdin
 	Env       map[string]string `json:"env,omitempty"`
 	Secrets   []string          `json:"secrets,omitempty"`
-	CPU       string            `json:"cpu,omitempty"`
-	Memory    string            `json:"memory,omitempty"`
-	Timeout   string            `json:"timeout,omitempty"`
-	TraceID   string            `json:"traceId,omitempty"`
+	// SecretRef is the name of a k8s Secret in the same namespace whose
+	// keys are EnvFrom-projected into the agent container. The api creates
+	// this Secret from the tenant's named secrets before dispatching.
+	SecretRef string `json:"secretRef,omitempty"`
+	CPU       string `json:"cpu,omitempty"`
+	Memory    string `json:"memory,omitempty"`
+	Timeout   string `json:"timeout,omitempty"`
+	TraceID   string `json:"traceId,omitempty"`
 }
 
 // AgentRunPhase is the observed phase.
@@ -109,6 +113,9 @@ type AgentDeploymentSpec struct {
 	IdleTimeout string            `json:"idleTimeout,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
 	Secrets     []string          `json:"secrets,omitempty"`
+	// SecretRef is the name of a k8s Secret in the same namespace whose
+	// keys are EnvFrom-projected into the agent container.
+	SecretRef string `json:"secretRef,omitempty"`
 }
 
 // AgentDeploymentStatus is observed state.

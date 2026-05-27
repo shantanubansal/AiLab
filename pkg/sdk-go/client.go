@@ -77,6 +77,12 @@ type Build struct {
 	EndedAt   *time.Time `json:"endedAt,omitempty"`
 }
 
+type SecretRef struct {
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // APIError is returned when the server responds non-2xx.
 type APIError struct {
 	Status int
@@ -253,4 +259,28 @@ func (c *Client) CreateBuild(ctx context.Context, agentID, sourceURL string) (Bu
 		"sourceUrl": sourceURL,
 	}, &b)
 	return b, err
+}
+
+// ---- Secrets ----
+
+func (c *Client) ListSecrets(ctx context.Context) ([]SecretRef, error) {
+	var resp struct {
+		Secrets []SecretRef `json:"secrets"`
+	}
+	err := c.do(ctx, "GET", "/v1/secrets", nil, &resp)
+	return resp.Secrets, err
+}
+
+// SetSecret creates or updates a tenant secret by name.
+func (c *Client) SetSecret(ctx context.Context, name, value string) (SecretRef, error) {
+	var s SecretRef
+	err := c.do(ctx, "POST", "/v1/secrets", map[string]any{
+		"name":  name,
+		"value": value,
+	}, &s)
+	return s, err
+}
+
+func (c *Client) DeleteSecret(ctx context.Context, name string) error {
+	return c.do(ctx, "DELETE", "/v1/secrets/"+name, nil, nil)
 }

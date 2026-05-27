@@ -1,0 +1,27 @@
+schemaVersion: v1
+name: hello-container
+mode: job
+runtime: container
+
+# When runtime=container, the platform doesn't build for you — it just
+# runs the image you point at. The image must read AGENT_INPUTS env
+# (validated input JSON) and write a final JSON line to stdout.
+image: ghcr.io/example/my-agent:latest
+
+inputs:
+  type: object
+  additionalProperties: true
+
+outputs:
+  type: object
+  additionalProperties: true
+
+secrets: []
+
+resources:
+  cpu: "200m"
+  memory: "256Mi"
+  timeout: "5m"
+
+triggers:
+  - kind: manual
