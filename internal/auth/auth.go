@@ -30,6 +30,13 @@ func FromContext(ctx context.Context) (Identity, bool) {
 	return v, ok
 }
 
+// WithIdentity returns a context with the given Identity attached. Used by
+// unauthenticated paths (webhook receivers, cron firings) that still want
+// to participate in audit / usage flows under a synthetic identity.
+func WithIdentity(ctx context.Context, id Identity) context.Context {
+	return context.WithValue(ctx, identityKey, id)
+}
+
 // Verifier resolves a bearer token to an Identity. Real implementation lives
 // in a workos verifier; dev mode uses DevVerifier.
 type Verifier interface {

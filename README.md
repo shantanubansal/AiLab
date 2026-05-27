@@ -119,5 +119,28 @@ End-to-end paths working locally (all verified against a kind cluster):
   VPC + EKS + RDS Postgres + S3, plus a release workflow that builds and
   pushes per-service images + the Helm chart to GHCR on SemVer tags.
   Walkthrough in `docs/DEPLOY.md`.
+- **Audit log** — `audit_events` append-only table; every state-changing
+  write goes through `audit.Log()` (agent create/delete, secret upsert/
+  delete, run trigger, deploy/undeploy, build create, trigger create,
+  webhook invoke). `GET /v1/audit` returns recent events for the tenant.
+- **Loki read-path** — `GET /v1/runs/{id}/logs` falls back to a LogQL
+  `query_range` once the pod has been GC'd. Set `LOKI_URL` to enable.
+- **OTEL tracing** — api, controller, and builder all initialize a
+  TracerProvider via `internal/telemetry`. OTLP gRPC export when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is set (e.g. `tempo.observability:4317`),
+  no-op otherwise. The api wraps chi with `otelhttp.NewMiddleware` and
+  the run trigger handler emits an explicit `run.trigger` span; the
+  span's trace id fills `AGENT_TRACE_ID` so traces in Tempo align with
+  the agent's own logs.
+- **Billing** — `cmd/billing` ships `usage_events` rows to Orb's ingest
+  endpoint in batches, advancing a per-destination checkpoint
+  (`usage_shipper_state`) only after successful send. Configure with
+  `ORB_API_KEY` (and optional `ORB_API_URL`). Stripe is the same
+  Destination interface — wire when needed.
+- **Janitor** — `cmd/janitor` periodically GC's completed k8s Jobs older
+  than `JANITOR_JOB_TTL`, reaps orphan run-Secrets, fails builds stuck
+  pending/running past `JANITOR_BUILD_STUCK_TTL`, and prunes
+  `usage_events` older than `JANITOR_USAGE_TTL` once they've been
+  shipped past every destination's checkpoint.
 
 See `docs/PLAN.md` for the v1 build order and what's still deferred.

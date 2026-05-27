@@ -17,8 +17,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
@@ -96,6 +98,10 @@ func (h *DeployHandlers) deploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "queue: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	audit.Log(r.Context(), audit.ActionDeploy, audit.ResourceDeployment, a.ID, map[string]any{
+		"agentName": a.Name,
+		"image":     *a.Image,
+	}, middleware.GetReqID(r.Context()))
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -145,5 +151,8 @@ func (h *DeployHandlers) undeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "queue: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	audit.Log(r.Context(), audit.ActionUndeploy, audit.ResourceDeployment, a.ID, map[string]any{
+		"agentName": a.Name,
+	}, middleware.GetReqID(r.Context()))
 	w.WriteHeader(http.StatusAccepted)
 }

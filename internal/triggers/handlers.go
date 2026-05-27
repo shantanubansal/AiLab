@@ -21,9 +21,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 
 	"github.com/shantanubansal/AiLab/internal/agents"
+	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
@@ -106,6 +108,11 @@ func (h *Handlers) create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	audit.Log(r.Context(), audit.ActionCreate, audit.ResourceTrigger, t.ID, map[string]any{
+		"agentId": agentID,
+		"kind":    string(t.Kind),
+		"name":    t.Name,
+	}, middleware.GetReqID(r.Context()))
 	writeJSON(w, http.StatusCreated, toDTO(t, true))
 }
 
@@ -197,6 +204,17 @@ func (h *Handlers) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Webhook receivers run without auth context. Attach a synthetic
+	// identity for the audit log so the invoke is attributed to the
+	// trigger itself rather than dropped.
+	auditCtx := auth.WithIdentity(r.Context(), auth.Identity{
+		TenantID: trig.TenantID,
+		UserID:   "webhook:" + trig.Name,
+	})
+	audit.Log(auditCtx, audit.ActionInvoke, audit.ResourceTrigger, trig.ID, map[string]any{
+		"agentId": a.ID,
+		"runId":   run.ID,
+	}, middleware.GetReqID(r.Context()))
 	writeJSON(w, http.StatusAccepted, map[string]string{"runId": run.ID})
 }
 

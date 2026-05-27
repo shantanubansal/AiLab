@@ -1,10 +1,11 @@
-// Pod log streaming. Translates GET /v1/runs/{runId}/logs into an SSE
-// stream of the matching pod's stdout/stderr. Stays simple in v1: one
-// matching pod, follow=true until the pod ends, then close.
+// Pod log streaming. GET /v1/runs/{runId}/logs is an SSE stream with two
+// possible backends:
+//   * live: a Pod for this run still exists → kubectl-style follow
+//   * historical: no Pod left → Loki query_range (if configured)
 //
-// In v1.1 this becomes a Loki query so historical logs are available
-// after the pod has been garbage-collected; until then the agent's stderr
-// is reachable only while the pod is around.
+// The handler picks the right backend transparently. Pods get garbage-
+// collected after their Job finishes, so the Loki path is what makes
+// "show me logs for a run that finished yesterday" work.
 
 package runs
 
@@ -23,15 +24,11 @@ import (
 
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
+	"github.com/shantanubansal/AiLab/internal/loki"
 )
 
-// streamLogs is wired by Handlers when a kubernetes client is configured.
+// streamLogs is the handler for GET /v1/runs/{runId}/logs.
 func (h *Handlers) streamLogs(w http.ResponseWriter, r *http.Request) {
-	if h.K8s == nil {
-		http.Error(w, "logs unavailable: kube client not configured", http.StatusServiceUnavailable)
-		return
-	}
-
 	id, ok := auth.FromContext(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -49,29 +46,46 @@ func (h *Handlers) streamLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ns := "tenant-" + run.TenantID
-	pod, err := waitForPod(r.Context(), h.K8s, ns, runID, 15*time.Second)
-	if err != nil {
-		http.Error(w, "log target not found: "+err.Error(), http.StatusNotFound)
-		return
-	}
-
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
+	setSSEHeaders(w)
+
+	// 1. Live path. If a Pod still exists for this run, stream from kubectl.
+	if h.K8s != nil {
+		ns := "tenant-" + run.TenantID
+		pod, podErr := findPod(r.Context(), h.K8s, ns, runID)
+		if podErr == nil {
+			h.streamFromPod(r.Context(), w, flusher, ns, pod)
+			return
+		}
+	}
+
+	// 2. Historical path. Loki, if configured.
+	if h.Loki != nil && !h.Loki.Disabled() {
+		h.streamFromLoki(r.Context(), w, flusher, run.TenantID, runID)
+		return
+	}
+
+	fmt.Fprint(w, "event: error\ndata: no live pod and Loki not configured\n\n")
+	flusher.Flush()
+}
+
+func setSSEHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+}
 
-	stream, err := h.K8s.CoreV1().Pods(ns).GetLogs(pod, &corev1.PodLogOptions{
-		Follow:     true,
-		Timestamps: false,
-		Container:  "agent",
-	}).Stream(r.Context())
+func (h *Handlers) streamFromPod(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, namespace, pod string) {
+	stream, err := h.K8s.CoreV1().Pods(namespace).GetLogs(pod, &corev1.PodLogOptions{
+		Follow:    true,
+		Container: "agent",
+	}).Stream(ctx)
 	if err != nil {
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
 		flusher.Flush()
@@ -91,29 +105,32 @@ func (h *Handlers) streamLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// waitForPod polls for a Pod labeled with the run id, up to deadline. The
-// reconciler's Job + Pod creation is racey vs an eager UI subscribe, so we
-// give it a short grace window before declaring not-found.
-func waitForPod(ctx context.Context, k kubernetes.Interface, namespace, runID string, within time.Duration) (string, error) {
-	deadline := time.Now().Add(within)
-	for {
-		pods, err := k.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-			LabelSelector: "ailab.uipath.com/run=" + runID,
-			Limit:         1,
-		})
-		if err == nil && len(pods.Items) > 0 {
-			return pods.Items[0].Name, nil
-		}
-		if time.Now().After(deadline) {
-			if err != nil {
-				return "", err
-			}
-			return "", errors.New("no pod found for run")
-		}
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(500 * time.Millisecond):
-		}
+func (h *Handlers) streamFromLoki(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, tenantID, runID string) {
+	lines, err := h.Loki.Query(ctx, loki.LogQLForRun(tenantID, runID), time.Time{}, time.Time{}, 0)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+		return
 	}
+	for _, line := range lines {
+		fmt.Fprintf(w, "data: %s\n\n", line)
+		flusher.Flush()
+	}
+}
+
+// findPod looks up the (single) Pod tagged with this run's id. Quick
+// non-blocking version of waitForPod — we treat "no pod" as a signal
+// to fall back to Loki rather than as a wait condition.
+func findPod(ctx context.Context, k kubernetes.Interface, namespace, runID string) (string, error) {
+	pods, err := k.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "ailab.uipath.com/run=" + runID,
+		Limit:         1,
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(pods.Items) == 0 {
+		return "", errors.New("no pod for run")
+	}
+	return pods.Items[0].Name, nil
 }

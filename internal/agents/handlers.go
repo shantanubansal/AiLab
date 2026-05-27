@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/pkg/manifest"
@@ -94,6 +96,11 @@ func (h *Handlers) create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	audit.Log(r.Context(), audit.ActionCreate, audit.ResourceAgent, a.ID, map[string]any{
+		"name":    a.Name,
+		"mode":    a.Mode,
+		"runtime": a.Runtime,
+	}, middleware.GetReqID(r.Context()))
 	writeJSON(w, http.StatusCreated, toDTO(a))
 }
 
@@ -132,6 +139,7 @@ func (h *Handlers) delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	audit.Log(r.Context(), audit.ActionDelete, audit.ResourceAgent, agentID, nil, middleware.GetReqID(r.Context()))
 	w.WriteHeader(http.StatusNoContent)
 }
 

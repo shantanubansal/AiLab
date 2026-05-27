@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -20,7 +21,11 @@ import (
 	"github.com/shantanubansal/AiLab/internal/config"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
 	"github.com/shantanubansal/AiLab/internal/runs"
+	"github.com/shantanubansal/AiLab/internal/telemetry"
 )
+
+// version is overridden via -ldflags by the release pipeline.
+var version = "dev"
 
 func main() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
@@ -37,6 +42,17 @@ func main() {
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	shutdownTraces, err := telemetry.Init(rootCtx, "controller", version)
+	if err != nil {
+		logger.Error(err, "telemetry init")
+		os.Exit(1)
+	}
+	defer func() {
+		flush, cancelFlush := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelFlush()
+		_ = shutdownTraces(flush)
+	}()
 
 	bus, err := eventbus.Connect(rootCtx, apiCfg.NATSURL)
 	if err != nil {

@@ -17,9 +17,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 
 	"github.com/shantanubansal/AiLab/internal/agents"
+	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/builds"
 	"github.com/shantanubansal/AiLab/internal/config"
@@ -27,11 +29,16 @@ import (
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
 	"github.com/shantanubansal/AiLab/internal/kube"
+	"github.com/shantanubansal/AiLab/internal/loki"
 	"github.com/shantanubansal/AiLab/internal/runs"
 	"github.com/shantanubansal/AiLab/internal/secrets"
+	"github.com/shantanubansal/AiLab/internal/telemetry"
 	"github.com/shantanubansal/AiLab/internal/triggers"
 	"github.com/shantanubansal/AiLab/internal/usage"
 )
+
+// version is overridden via -ldflags by the release pipeline.
+var version = "dev"
 
 func main() {
 	logger := mustLogger()
@@ -44,6 +51,16 @@ func main() {
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	shutdownTraces, err := telemetry.Init(rootCtx, "api", version)
+	if err != nil {
+		logger.Fatal("telemetry init", zap.Error(err))
+	}
+	defer func() {
+		flush, cancelFlush := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelFlush()
+		_ = shutdownTraces(flush)
+	}()
 
 	pool, err := db.Open(rootCtx, cfg.DatabaseURL)
 	if err != nil {
@@ -67,6 +84,13 @@ func main() {
 	triggerRepo := triggers.NewRepo(pool, box)
 	buildRepo := builds.NewRepo(pool)
 	secretRepo := secrets.NewRepo(pool, box)
+	auditRepo := audit.NewRepo(pool)
+	audit.SetGlobal(auditRepo)
+
+	lokiClient := loki.New(cfg.LokiURL)
+	if cfg.LokiURL == "" {
+		logger.Info("LOKI_URL unset; runs/logs falls back to error when pod has been GC'd")
+	}
 
 	// k8s client is optional — without it the api still serves CRUD but
 	// GET /v1/runs/{id}/logs returns 503. Failing to load it should not
@@ -101,6 +125,7 @@ func main() {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
+	r.Use(otelhttp.NewMiddleware("api"))
 	r.Use(auth.CORS(auth.DefaultCORSOrigins()))
 	r.Use(middleware.Timeout(30 * time.Second))
 
@@ -127,7 +152,7 @@ func main() {
 		deployH := &agents.DeployHandlers{Repo: agentRepo, Bus: bus, K8s: k8sClient, Secrets: secretRepo}
 		r.Route("/agents/{agentId}/deploy", deployH.Routes)
 
-		runH := &runs.Handlers{Runs: runRepo, Agents: agentRepo, Bus: bus, K8s: k8sClient, Secrets: secretRepo}
+		runH := &runs.Handlers{Runs: runRepo, Agents: agentRepo, Bus: bus, K8s: k8sClient, Secrets: secretRepo, Loki: lokiClient}
 		runH.Routes(r)
 
 		r.Route("/agents/{agentId}/triggers", triggerH.AuthRoutes)
@@ -137,6 +162,9 @@ func main() {
 
 		secretH := &secrets.Handlers{Repo: secretRepo}
 		r.Route("/secrets", secretH.Routes)
+
+		auditH := &audit.Handlers{Repo: auditRepo}
+		r.Route("/audit", auditH.Routes)
 	})
 
 	srv := &http.Server{

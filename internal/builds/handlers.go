@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/shantanubansal/AiLab/internal/agents"
+	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
@@ -82,6 +84,10 @@ func (h *Handlers) create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "queue: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	audit.Log(r.Context(), audit.ActionCreate, audit.ResourceBuild, b.ID, map[string]any{
+		"agentId":   agentID,
+		"sourceUrl": req.SourceURL,
+	}, middleware.GetReqID(r.Context()))
 
 	writeJSON(w, http.StatusAccepted, buildDTO{
 		ID:        b.ID,

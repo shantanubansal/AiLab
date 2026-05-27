@@ -16,13 +16,18 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/shantanubansal/AiLab/internal/agents"
+	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
+	"github.com/shantanubansal/AiLab/internal/loki"
 	"github.com/shantanubansal/AiLab/internal/secrets"
 	"github.com/shantanubansal/AiLab/pkg/events"
 )
@@ -34,6 +39,7 @@ type Handlers struct {
 	Bus     *eventbus.Bus
 	K8s     kubernetes.Interface
 	Secrets *secrets.Repo
+	Loki    *loki.Client
 }
 
 // Routes mounts run handlers on a chi router rooted at /v1.
@@ -106,12 +112,20 @@ type triggerRequest struct {
 }
 
 func (h *Handlers) trigger(w http.ResponseWriter, r *http.Request) {
+	ctx, span := otel.Tracer("ailab/api").Start(r.Context(), "run.trigger")
+	defer span.End()
+	r = r.WithContext(ctx)
+
 	id, ok := auth.FromContext(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	agentID := chi.URLParam(r, "agentId")
+	span.SetAttributes(
+		attribute.String("ailab.tenant_id", id.TenantID),
+		attribute.String("ailab.agent_id", agentID),
+	)
 	agent, err := h.Agents.Get(r.Context(), id.TenantID, agentID)
 	if err != nil {
 		mapAgentErr(w, err)
@@ -135,7 +149,14 @@ func (h *Handlers) trigger(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Use the active span's trace id when present so the platform's
+	// AGENT_TRACE_ID surfaces in Tempo alongside the api → controller spans.
 	traceID := uuid.NewString()
+	if sc := span.SpanContext(); sc.IsValid() {
+		traceID = sc.TraceID().String()
+	}
+	span.SetAttributes(attribute.String("ailab.trace_id", traceID))
+
 	run, err := h.Runs.Create(r.Context(), id.TenantID, agent.ID, req.Inputs, traceID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -169,6 +190,11 @@ func (h *Handlers) trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	audit.Log(r.Context(), audit.ActionTrigger, audit.ResourceRun, run.ID, map[string]any{
+		"agentId": agent.ID,
+		"source":  "manual",
+	}, middleware.GetReqID(r.Context()))
+	span.SetAttributes(attribute.String("ailab.run_id", run.ID))
 	writeJSON(w, http.StatusAccepted, toDTO(run))
 }
 

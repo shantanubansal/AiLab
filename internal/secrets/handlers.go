@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 )
@@ -78,6 +80,7 @@ func (h *Handlers) upsert(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	audit.Log(r.Context(), audit.ActionUpdate, audit.ResourceSecret, s.Name, nil, middleware.GetReqID(r.Context()))
 	writeJSON(w, http.StatusCreated, secretDTO{Name: s.Name, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt})
 }
 
@@ -96,6 +99,7 @@ func (h *Handlers) del(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	audit.Log(r.Context(), audit.ActionDelete, audit.ResourceSecret, name, nil, middleware.GetReqID(r.Context()))
 	w.WriteHeader(http.StatusNoContent)
 }
 

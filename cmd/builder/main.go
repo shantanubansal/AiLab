@@ -46,8 +46,12 @@ import (
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
 	"github.com/shantanubansal/AiLab/internal/kube"
+	"github.com/shantanubansal/AiLab/internal/telemetry"
 	"github.com/shantanubansal/AiLab/pkg/events"
 )
+
+// version is overridden via -ldflags by the release pipeline.
+var version = "dev"
 
 func main() {
 	cfg := config.LoadAPI()
@@ -76,6 +80,16 @@ func main() {
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	shutdownTraces, err := telemetry.Init(rootCtx, "builder", version)
+	if err != nil {
+		log.Fatalf("telemetry init: %v", err)
+	}
+	defer func() {
+		flush, cancelFlush := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelFlush()
+		_ = shutdownTraces(flush)
+	}()
 
 	pool, err := db.Open(rootCtx, cfg.DatabaseURL)
 	if err != nil {
