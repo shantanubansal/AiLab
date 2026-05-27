@@ -33,6 +33,7 @@ import (
 	"github.com/shantanubansal/AiLab/internal/runs"
 	"github.com/shantanubansal/AiLab/internal/secrets"
 	"github.com/shantanubansal/AiLab/internal/telemetry"
+	"github.com/shantanubansal/AiLab/internal/tenants"
 	"github.com/shantanubansal/AiLab/internal/triggers"
 	"github.com/shantanubansal/AiLab/internal/usage"
 )
@@ -143,6 +144,17 @@ func main() {
 	// Unauthenticated webhook receiver lives outside /v1's auth middleware.
 	triggerH.PublicRoutes(r)
 
+	// WorkOS organization webhook also lives outside the JWT auth middleware
+	// — its own HMAC verification gates the writes.
+	if cfg.WorkOSWebhookSecret != "" {
+		tenantRepo := tenants.NewRepo(pool)
+		workosH := &tenants.WebhookHandler{Repo: tenantRepo, SigningSecret: cfg.WorkOSWebhookSecret}
+		r.Route("/v1/webhooks", workosH.Routes)
+		logger.Info("workos webhook receiver enabled at /v1/webhooks/workos")
+	} else {
+		logger.Info("WORKOS_WEBHOOK_SECRET unset; tenant provisioning is manual")
+	}
+
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(auth.Middleware(verifier))
 
@@ -165,6 +177,10 @@ func main() {
 
 		auditH := &audit.Handlers{Repo: auditRepo}
 		r.Route("/audit", auditH.Routes)
+
+		tenantRepoForMe := tenants.NewRepo(pool)
+		meH := &tenants.MeHandler{Repo: tenantRepoForMe}
+		r.Route("/me", meH.Routes)
 	})
 
 	srv := &http.Server{

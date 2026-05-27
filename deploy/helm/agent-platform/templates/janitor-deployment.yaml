@@ -1,0 +1,76 @@
+{{- if .Values.janitor.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-janitor
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: janitor
+spec:
+  replicas: 1   # single replica — the loop already deduplicates idempotently, but no need for redundant work
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-platform.name" . }}
+      app.kubernetes.io/component: janitor
+  template:
+    metadata:
+      labels:
+        {{- include "agent-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: janitor
+    spec:
+      serviceAccountName: {{ include "agent-platform.fullname" . }}-janitor
+      containers:
+        - name: janitor
+          image: {{ include "agent-platform.image" (dict "Values" .Values "component" "janitor") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: DATABASE_URL
+              value: {{ .Values.postgres.url | quote }}
+            - name: NATS_URL
+              value: {{ .Values.nats.url | quote }}
+            - name: JANITOR_INTERVAL
+              value: {{ .Values.janitor.interval | quote }}
+            - name: JANITOR_JOB_TTL
+              value: {{ .Values.janitor.jobTTL | quote }}
+            - name: JANITOR_BUILD_STUCK_TTL
+              value: {{ .Values.janitor.buildStuckTTL | quote }}
+            - name: JANITOR_USAGE_TTL
+              value: {{ .Values.janitor.usageTTL | quote }}
+          resources:
+            {{- toYaml .Values.janitor.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-janitor
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-janitor
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-janitor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agent-platform.fullname" . }}-janitor
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agent-platform.fullname" . }}-janitor
+    namespace: {{ .Release.Namespace }}
+{{- end }}

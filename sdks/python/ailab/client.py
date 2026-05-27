@@ -143,3 +143,7 @@ class Client:
 
     def delete_secret(self, name: str) -> None:
         self._request("DELETE", f"/v1/secrets/{name}")
+
+    # ---- /v1/me ----
+    def me(self) -> dict[str, Any]:
+        return self._request("GET", "/v1/me")

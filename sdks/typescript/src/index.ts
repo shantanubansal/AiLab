@@ -50,6 +50,17 @@ export type SecretRef = {
   updatedAt: string;
 };
 
+export type Me = {
+  userId: string;
+  seatCount: number;
+  tenant: {
+    id: string;
+    slug: string;
+    name: string;
+    createdAt: string;
+  };
+};
+
 export class APIError extends Error {
   constructor(public readonly status: number, public readonly body: string) {
     super(`api ${status}: ${body}`);
@@ -191,6 +202,11 @@ export class Client {
 
   async deleteSecret(name: string): Promise<void> {
     await this.request<void>("DELETE", `/v1/secrets/${name}`);
+  }
+
+  // ---- /v1/me ----
+  me(): Promise<Me> {
+    return this.request<Me>("GET", "/v1/me");
   }
 
   // ---- internals ----

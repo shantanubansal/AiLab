@@ -29,7 +29,10 @@ type RunRequested struct {
 	Inputs    map[string]any `json:"inputs"`             // arbitrary input JSON, validated by api
 	TraceID   string         `json:"traceId"`            // propagated to user code via AGENT_TRACE_ID
 	SecretRef string         `json:"secretRef,omitempty"` // k8s Secret name in tenant ns, EnvFrom-mounted into pod
-	At        time.Time      `json:"at"`
+	// TraceContext carries W3C traceparent + tracestate so the controller
+	// can resume the api-side trace as a single end-to-end span chain.
+	TraceContext map[string]string `json:"traceContext,omitempty"`
+	At           time.Time         `json:"at"`
 }
 
 // RunStarted fires when the pod backing a run transitions to Running.
@@ -67,11 +70,12 @@ type RunCompleted struct {
 // BuildRequested fires when a user pushes source for a code agent. The
 // builder consumes it, runs Kaniko + Trivy + cosign, then publishes BuildCompleted.
 type BuildRequested struct {
-	TenantID string    `json:"tenantId"`
-	AgentID  string    `json:"agentId"`
-	BuildID  string    `json:"buildId"`
-	SourceURL string   `json:"sourceUrl"` // git URL or pre-uploaded tarball URL
-	At       time.Time `json:"at"`
+	TenantID     string            `json:"tenantId"`
+	AgentID      string            `json:"agentId"`
+	BuildID      string            `json:"buildId"`
+	SourceURL    string            `json:"sourceUrl"`
+	TraceContext map[string]string `json:"traceContext,omitempty"`
+	At           time.Time         `json:"at"`
 }
 
 // BuildStatus enumerates the terminal state of a build.
@@ -87,14 +91,15 @@ const (
 // brought up as a long-running Deployment + Service. The controller
 // materializes it into an AgentDeployment CR.
 type DeploymentRequested struct {
-	TenantID   string    `json:"tenantId"`
-	AgentID    string    `json:"agentId"`
-	AgentName  string    `json:"agentName"`
-	Image      string    `json:"image"`
-	Port       int32     `json:"port"`
-	HealthPath string    `json:"healthPath,omitempty"`
-	SecretRef  string    `json:"secretRef,omitempty"` // k8s Secret name to EnvFrom-mount
-	At         time.Time `json:"at"`
+	TenantID     string            `json:"tenantId"`
+	AgentID      string            `json:"agentId"`
+	AgentName    string            `json:"agentName"`
+	Image        string            `json:"image"`
+	Port         int32             `json:"port"`
+	HealthPath   string            `json:"healthPath,omitempty"`
+	SecretRef    string            `json:"secretRef,omitempty"`
+	TraceContext map[string]string `json:"traceContext,omitempty"`
+	At           time.Time         `json:"at"`
 }
 
 // DeploymentStopped is published when an agent's long-running deployment

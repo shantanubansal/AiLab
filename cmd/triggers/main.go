@@ -29,15 +29,29 @@ import (
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
 	"github.com/shantanubansal/AiLab/internal/runs"
+	"github.com/shantanubansal/AiLab/internal/telemetry"
 	"github.com/shantanubansal/AiLab/internal/triggers"
 	"github.com/shantanubansal/AiLab/pkg/events"
 )
+
+// version is overridden via -ldflags by the release pipeline.
+var version = "dev"
 
 func main() {
 	cfg := config.LoadAPI()
 
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	shutdownTraces, err := telemetry.Init(rootCtx, "triggers", version)
+	if err != nil {
+		log.Fatalf("telemetry init: %v", err)
+	}
+	defer func() {
+		flush, cancelFlush := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelFlush()
+		_ = shutdownTraces(flush)
+	}()
 
 	pool, err := db.Open(rootCtx, cfg.DatabaseURL)
 	if err != nil {
@@ -167,12 +181,13 @@ func (s *scheduler) fire(ctx context.Context, t triggers.Trigger) error {
 	}
 
 	if err := s.bus.Publish(ctx, events.SubjectRunRequested, events.RunRequested{
-		TenantID: t.TenantID,
-		AgentID:  a.ID,
-		RunID:    run.ID,
-		Image:    *a.Image,
-		TraceID:  traceID,
-		At:       time.Now().UTC(),
+		TenantID:     t.TenantID,
+		AgentID:      a.ID,
+		RunID:        run.ID,
+		Image:        *a.Image,
+		TraceID:      traceID,
+		TraceContext: telemetry.Inject(ctx),
+		At:           time.Now().UTC(),
 	}); err != nil {
 		return fmt.Errorf("publish: %w", err)
 	}

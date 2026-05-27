@@ -36,6 +36,7 @@ Configure once with 'agentctl login', or set AILAB_API and AILAB_TOKEN.`,
 	c.AddCommand(undeployCmd())
 	c.AddCommand(buildsCmd())
 	c.AddCommand(secretsCmd())
+	c.AddCommand(meCmd())
 	return c
 }
 

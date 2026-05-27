@@ -88,17 +88,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	quota := runs.QuotaSpec{
+		CPU:    envOr("CONTROLLER_TENANT_QUOTA_CPU", "8"),
+		Memory: envOr("CONTROLLER_TENANT_QUOTA_MEMORY", "16Gi"),
+		Pods:   envOr("CONTROLLER_TENANT_QUOTA_PODS", "50"),
+	}
+	limit := runs.LimitSpec{
+		DefaultCPU:    envOr("CONTROLLER_TENANT_LIMIT_DEFAULT_CPU", "200m"),
+		DefaultMemory: envOr("CONTROLLER_TENANT_LIMIT_DEFAULT_MEMORY", "256Mi"),
+		MaxCPU:        envOr("CONTROLLER_TENANT_LIMIT_MAX_CPU", "4"),
+		MaxMemory:     envOr("CONTROLLER_TENANT_LIMIT_MAX_MEMORY", "8Gi"),
+	}
+
 	// Dispatch consumers need a working client; they run alongside the
 	// manager and start once it's elected.
 	go func() {
 		<-mgr.Elected()
-		runDC := &runs.DispatchConsumer{Client: mgr.GetClient()}
+		runDC := &runs.DispatchConsumer{Client: mgr.GetClient(), Quota: quota, Limit: limit}
 		if err := runDC.Start(rootCtx, bus); err != nil {
 			logger.Error(err, "run dispatch consumer")
 		} else {
 			logger.Info("run dispatch consumer subscribed")
 		}
-		depDC := &runs.DeploymentDispatchConsumer{Client: mgr.GetClient()}
+		depDC := &runs.DeploymentDispatchConsumer{Client: mgr.GetClient(), Quota: quota, Limit: limit}
 		if err := depDC.Start(rootCtx, bus); err != nil {
 			logger.Error(err, "deployment dispatch consumer")
 		} else {
@@ -111,4 +123,11 @@ func main() {
 		logger.Error(err, "manager exited with error")
 		os.Exit(1)
 	}
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }

@@ -46,3 +46,31 @@ func (r *Repo) Get(ctx context.Context, id string) (Tenant, error) {
 	}
 	return t, nil
 }
+
+// Upsert creates a tenant or updates its slug/name if it already exists.
+// Used by the WorkOS organization webhook for organization.created and
+// organization.updated.
+func (r *Repo) Upsert(ctx context.Context, id, slug, name string) (Tenant, error) {
+	var t Tenant
+	err := r.pool.QueryRow(ctx, `
+		INSERT INTO tenants (id, slug, name)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id) DO UPDATE SET slug = EXCLUDED.slug, name = EXCLUDED.name
+		RETURNING id, slug, name, created_at
+	`, id, slug, name).Scan(&t.ID, &t.Slug, &t.Name, &t.CreatedAt)
+	return t, err
+}
+
+// Delete removes a tenant by id. ON DELETE CASCADE on every child table
+// cleans up agents, runs, builds, triggers, secrets, audit_events,
+// usage_events. Returns db.ErrNotFound when no row matched.
+func (r *Repo) Delete(ctx context.Context, id string) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM tenants WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return db.ErrNotFound
+	}
+	return nil
+}

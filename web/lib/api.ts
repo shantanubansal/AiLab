@@ -79,9 +79,21 @@ export type Trigger = {
   webhookSecret?: string; // only on create
 };
 
+export type Me = {
+  userId: string;
+  seatCount: number;
+  tenant: {
+    id: string;
+    slug: string;
+    name: string;
+    createdAt: string;
+  };
+};
+
 // ---- Endpoints ----
 
 export const api = {
+  me: () => request<Me>("/v1/me"),
   listAgents: () => request<{ agents: Agent[] }>("/v1/agents").then((x) => x.agents),
   createAgent: (manifest: Record<string, unknown>) =>
     request<Agent>("/v1/agents", { method: "POST", body: JSON.stringify({ manifest }) }),

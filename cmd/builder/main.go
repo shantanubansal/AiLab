@@ -34,6 +34,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -157,6 +159,14 @@ func (w *worker) handle(ctx context.Context, data []byte) error {
 	if err := json.Unmarshal(data, &ev); err != nil {
 		return fmt.Errorf("unmarshal: %w", err)
 	}
+	ctx = telemetry.Extract(ctx, ev.TraceContext)
+	ctx, span := otel.Tracer("ailab/builder").Start(ctx, "build.run")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("ailab.tenant_id", ev.TenantID),
+		attribute.String("ailab.agent_id", ev.AgentID),
+		attribute.String("ailab.build_id", ev.BuildID),
+	)
 	log.Printf("build %s queued (agent=%s tenant=%s)", ev.BuildID, ev.AgentID, ev.TenantID)
 
 	if err := w.builds.MarkRunning(ctx, ev.BuildID); err != nil {

@@ -27,6 +27,16 @@ triggers:
   enabled: true
   replicas: 2
 
+billing:
+  enabled: true
+  orbSecretName: orb-credentials   # provide externally; chart does not create
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+janitor:
+  enabled: true
+
 tenancy:
   multiTenant: true
   runtimeClassName: gvisor

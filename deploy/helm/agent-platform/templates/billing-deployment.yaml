@@ -1,0 +1,43 @@
+{{- if .Values.billing.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-billing
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: billing
+spec:
+  replicas: {{ .Values.billing.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-platform.name" . }}
+      app.kubernetes.io/component: billing
+  template:
+    metadata:
+      labels:
+        {{- include "agent-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: billing
+    spec:
+      containers:
+        - name: billing
+          image: {{ include "agent-platform.image" (dict "Values" .Values "component" "billing") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: DATABASE_URL
+              value: {{ .Values.postgres.url | quote }}
+            - name: NATS_URL
+              value: {{ .Values.nats.url | quote }}
+            {{- if .Values.billing.orbApiUrl }}
+            - name: ORB_API_URL
+              value: {{ .Values.billing.orbApiUrl | quote }}
+            {{- end }}
+            {{- if .Values.billing.orbSecretName }}
+            - name: ORB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.billing.orbSecretName }}
+                  key: apiKey
+            {{- end }}
+          resources:
+            {{- toYaml .Values.billing.resources | nindent 12 }}
+{{- end }}

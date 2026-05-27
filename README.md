@@ -142,5 +142,24 @@ End-to-end paths working locally (all verified against a kind cluster):
   pending/running past `JANITOR_BUILD_STUCK_TTL`, and prunes
   `usage_events` older than `JANITOR_USAGE_TTL` once they've been
   shipped past every destination's checkpoint.
+- **Trace context propagation** — `events.RunRequested`,
+  `DeploymentRequested`, and `BuildRequested` carry a W3C traceparent
+  map. Publishers `telemetry.Inject(ctx)`; dispatch consumers + builder
+  `telemetry.Extract(ev.TraceContext)` and start child spans. Result:
+  one Tempo trace from api → controller dispatch → reconcile → Job.
+- **WorkOS organization webhook** — `POST /v1/webhooks/workos` accepts
+  organization.created/updated/deleted events (HMAC-verified with
+  `WORKOS_WEBHOOK_SECRET`) and reflects them into the `tenants` table.
+  Unset secret means manual provisioning, as before.
+- **Per-tenant quotas** — dispatch consumers bootstrap a `ResourceQuota`
+  + `LimitRange` in `tenant-<id>` on first run/deploy. Defaults via
+  `CONTROLLER_TENANT_QUOTA_*` / `CONTROLLER_TENANT_LIMIT_*` env vars
+  (8 cpu / 16Gi mem / 50 pods; 200m/256Mi requests by default).
+- **`/v1/me`** — returns the caller's tenant + user identity + seat
+  count; consumed by the UI and `agentctl whoami`.
+- **Helm coverage** — `cmd/billing` and `cmd/janitor` now have
+  first-class Deployments + RBAC in the chart, gated behind
+  `billing.enabled` and `janitor.enabled` (both on in the SaaS profile,
+  off in selfhost).
 
 See `docs/PLAN.md` for the v1 build order and what's still deferred.

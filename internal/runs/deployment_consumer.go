@@ -15,6 +15,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,12 +24,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/shantanubansal/AiLab/internal/eventbus"
+	"github.com/shantanubansal/AiLab/internal/telemetry"
 	"github.com/shantanubansal/AiLab/pkg/events"
 )
 
 // DeploymentDispatchConsumer reacts to deployment.* events on the bus.
+// Quota / Limit are applied on first deploy into a tenant namespace.
 type DeploymentDispatchConsumer struct {
 	Client client.Client
+	Quota  QuotaSpec
+	Limit  LimitSpec
 }
 
 // Start wires JetStream consumers for both subjects.
@@ -46,11 +52,21 @@ func (d *DeploymentDispatchConsumer) handleRequested(ctx context.Context, data [
 	if err := json.Unmarshal(data, &ev); err != nil {
 		return fmt.Errorf("unmarshal: %w", err)
 	}
+	ctx = telemetry.Extract(ctx, ev.TraceContext)
+	ctx, span := otel.Tracer("ailab/controller").Start(ctx, "deployment.dispatch")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("ailab.tenant_id", ev.TenantID),
+		attribute.String("ailab.agent_id", ev.AgentID),
+	)
 	logger := log.FromContext(ctx).WithValues("agent", ev.AgentID, "tenant", ev.TenantID)
 
 	ns := tenantNamespace(ev.TenantID)
 	if err := d.ensureNamespace(ctx, ns); err != nil {
 		return fmt.Errorf("ensure namespace: %w", err)
+	}
+	if err := EnsureTenantQuotas(ctx, d.Client, ns, d.Quota, d.Limit); err != nil {
+		logger.Info("quota apply failed; continuing", "error", err.Error())
 	}
 
 	desired := &AgentDeployment{

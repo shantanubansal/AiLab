@@ -83,6 +83,18 @@ type SecretRef struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// Me is the /v1/me response.
+type Me struct {
+	UserID    string `json:"userId"`
+	SeatCount int    `json:"seatCount"`
+	Tenant    struct {
+		ID        string    `json:"id"`
+		Slug      string    `json:"slug"`
+		Name      string    `json:"name"`
+		CreatedAt time.Time `json:"createdAt"`
+	} `json:"tenant"`
+}
+
 // APIError is returned when the server responds non-2xx.
 type APIError struct {
 	Status int
@@ -283,4 +295,12 @@ func (c *Client) SetSecret(ctx context.Context, name, value string) (SecretRef, 
 
 func (c *Client) DeleteSecret(ctx context.Context, name string) error {
 	return c.do(ctx, "DELETE", "/v1/secrets/"+name, nil, nil)
+}
+
+// ---- /v1/me ----
+
+func (c *Client) Me(ctx context.Context) (Me, error) {
+	var m Me
+	err := c.do(ctx, "GET", "/v1/me", nil, &m)
+	return m, err
 }

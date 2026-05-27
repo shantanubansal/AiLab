@@ -14,6 +14,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,13 +23,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/shantanubansal/AiLab/internal/eventbus"
+	"github.com/shantanubansal/AiLab/internal/telemetry"
 	"github.com/shantanubansal/AiLab/pkg/events"
 )
 
 // DispatchConsumer subscribes to run.requested and projects events into
-// AgentRun CRs against the cluster pointed at by Client.
+// AgentRun CRs against the cluster pointed at by Client. Quota / Limit
+// give the per-tenant defaults applied the first time a namespace is
+// touched.
 type DispatchConsumer struct {
 	Client client.Client
+	Quota  QuotaSpec
+	Limit  LimitSpec
 }
 
 // Start wires up the JetStream consumer. Returns once the subscription is
@@ -41,11 +48,21 @@ func (d *DispatchConsumer) handle(ctx context.Context, data []byte) error {
 	if err := json.Unmarshal(data, &ev); err != nil {
 		return fmt.Errorf("unmarshal run.requested: %w", err)
 	}
+	ctx = telemetry.Extract(ctx, ev.TraceContext)
+	ctx, span := otel.Tracer("ailab/controller").Start(ctx, "run.dispatch")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("ailab.tenant_id", ev.TenantID),
+		attribute.String("ailab.run_id", ev.RunID),
+	)
 	logger := log.FromContext(ctx).WithValues("tenantId", ev.TenantID, "runId", ev.RunID)
 
 	ns := tenantNamespace(ev.TenantID)
 	if err := d.ensureNamespace(ctx, ns); err != nil {
 		return fmt.Errorf("ensure namespace %s: %w", ns, err)
+	}
+	if err := EnsureTenantQuotas(ctx, d.Client, ns, d.Quota, d.Limit); err != nil {
+		logger.Info("quota apply failed; continuing", "error", err.Error())
 	}
 
 	inputsJSON := ""

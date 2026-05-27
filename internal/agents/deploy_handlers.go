@@ -25,6 +25,7 @@ import (
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
 	"github.com/shantanubansal/AiLab/internal/secrets"
+	"github.com/shantanubansal/AiLab/internal/telemetry"
 	"github.com/shantanubansal/AiLab/pkg/events"
 	"github.com/shantanubansal/AiLab/pkg/manifest"
 )
@@ -86,14 +87,15 @@ func (h *DeployHandlers) deploy(w http.ResponseWriter, r *http.Request) {
 	pubCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	if err := h.Bus.Publish(pubCtx, events.SubjectDeploymentRequested, events.DeploymentRequested{
-		TenantID:   a.TenantID,
-		AgentID:    a.ID,
-		AgentName:  a.Name,
-		Image:      *a.Image,
-		Port:       port,
-		HealthPath: healthPath,
-		SecretRef:  secretRef,
-		At:         time.Now().UTC(),
+		TenantID:     a.TenantID,
+		AgentID:      a.ID,
+		AgentName:    a.Name,
+		Image:        *a.Image,
+		Port:         port,
+		HealthPath:   healthPath,
+		SecretRef:    secretRef,
+		TraceContext: telemetry.Inject(r.Context()),
+		At:           time.Now().UTC(),
 	}); err != nil {
 		http.Error(w, "queue: "+err.Error(), http.StatusBadGateway)
 		return

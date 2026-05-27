@@ -30,6 +30,11 @@ type API struct {
 	// Optional. When set, the runs/logs endpoint falls back to Loki for
 	// runs whose Pod has been garbage-collected.
 	LokiURL string
+
+	// WorkOS webhook signing secret. When set, the /v1/webhooks/workos
+	// endpoint accepts organization.* events from WorkOS and reflects
+	// them into the tenants table.
+	WorkOSWebhookSecret string
 }
 
 // Controller holds configuration for the controller service.
@@ -48,8 +53,9 @@ func LoadAPI() API {
 		WorkOSAPIKey:   os.Getenv("WORKOS_API_KEY"),
 		WorkOSClientID: os.Getenv("WORKOS_CLIENT_ID"),
 		WorkOSJWKSURL:  os.Getenv("WORKOS_JWKS_URL"),
-		SecretsKeyHex:  env("API_SECRETS_KEY", "0000000000000000000000000000000000000000000000000000000000000000"),
-		LokiURL:        os.Getenv("LOKI_URL"),
+		SecretsKeyHex:       env("API_SECRETS_KEY", "0000000000000000000000000000000000000000000000000000000000000000"),
+		LokiURL:             os.Getenv("LOKI_URL"),
+		WorkOSWebhookSecret: os.Getenv("WORKOS_WEBHOOK_SECRET"),
 	}
 }
 

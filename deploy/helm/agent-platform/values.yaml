@@ -47,6 +47,25 @@ triggers:
   enabled: false   # off until the real implementation lands
   replicas: 1
 
+billing:
+  enabled: false   # set to true and supply orbSecretName once Orb is wired
+  replicas: 1
+  orbApiUrl: ""    # default https://api.withorb.com
+  orbSecretName: ""  # k8s Secret with key "apiKey"
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+
+janitor:
+  enabled: false
+  interval: "30m"
+  jobTTL: "24h"
+  buildStuckTTL: "6h"
+  usageTTL: "2160h"  # 90d
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+
 # ---- External dependencies. In SaaS we expect managed Postgres / NATS;
 #      in self-host we recommend bundled Bitnami subcharts (not wired yet).
 postgres:

@@ -17,6 +17,7 @@ import (
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/eventbus"
+	"github.com/shantanubansal/AiLab/internal/telemetry"
 	"github.com/shantanubansal/AiLab/pkg/events"
 )
 
@@ -75,11 +76,12 @@ func (h *Handlers) create(w http.ResponseWriter, r *http.Request) {
 	pubCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	if err := h.Bus.Publish(pubCtx, events.SubjectBuildRequested, events.BuildRequested{
-		TenantID:  id.TenantID,
-		AgentID:   agentID,
-		BuildID:   b.ID,
-		SourceURL: req.SourceURL,
-		At:        time.Now().UTC(),
+		TenantID:     id.TenantID,
+		AgentID:      agentID,
+		BuildID:      b.ID,
+		SourceURL:    req.SourceURL,
+		TraceContext: telemetry.Inject(r.Context()),
+		At:           time.Now().UTC(),
 	}); err != nil {
 		http.Error(w, "queue: "+err.Error(), http.StatusBadGateway)
 		return
