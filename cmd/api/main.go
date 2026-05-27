@@ -102,7 +102,7 @@ func main() {
 	}
 
 	usageRepo := usage.NewRepo(pool)
-	runHub := runs.NewHub()
+	runHub := runs.NewHub(bus)
 
 	// Status-feedback consumer: applies run.started / run.completed messages
 	// from the controller back into the runs table, writes usage metering

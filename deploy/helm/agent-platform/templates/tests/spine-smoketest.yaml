@@ -1,0 +1,67 @@
+{{- if .Values.tests.enabled -}}
+# Post-install validation: `helm test ailab` fires this Job, which drives
+# the spine end-to-end against the in-cluster api Service. Same shape as
+# scripts/smoketest.sh but containerized so it runs anywhere the chart
+# does. Cleanup runs on both success and failure so a green test leaves
+# no resources behind.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-smoketest
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
+spec:
+  restartPolicy: Never
+  containers:
+    - name: smoketest
+      image: {{ .Values.tests.image | quote }}
+      env:
+        - name: API
+          value: "http://{{ include "agent-platform.fullname" . }}-api"
+        - name: TOKEN
+          value: {{ .Values.tests.token | quote }}
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+          echo "waiting for api..."
+          for i in $(seq 1 60); do
+            wget -qO- "$API/healthz" >/dev/null 2>&1 && break
+            sleep 2
+          done
+          wget -qO- "$API/healthz" >/dev/null
+
+          # Create a hello-world agent.
+          ts=$(date +%s)
+          body='{"manifest":{"schemaVersion":"v1","name":"helmtest-'"$ts"'","mode":"job","runtime":"container","image":"hello-world"}}'
+          agent_json=$(wget -qO- --header="Authorization: Bearer $TOKEN" \
+                              --header="Content-Type: application/json" \
+                              --post-data="$body" "$API/v1/agents")
+          aid=$(echo "$agent_json" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
+          echo "agent: $aid"
+
+          # Trigger a manual run.
+          run_json=$(wget -qO- --header="Authorization: Bearer $TOKEN" \
+                            --header="Content-Type: application/json" \
+                            --post-data='{"inputs":{"helmtest":true}}' \
+                            "$API/v1/agents/$aid/runs")
+          rid=$(echo "$run_json" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
+          echo "run:   $rid"
+
+          # Poll for terminal status.
+          for i in $(seq 1 90); do
+            status_json=$(wget -qO- --header="Authorization: Bearer $TOKEN" "$API/v1/runs/$rid")
+            status=$(echo "$status_json" | sed -n 's/.*"status":"\([^"]*\)".*/\1/p' | head -1)
+            case "$status" in
+              succeeded) echo "PASS"; exit 0 ;;
+              failed|timed_out|cancelled) echo "FAIL (status=$status)"; exit 1 ;;
+            esac
+            sleep 2
+          done
+          echo "FAIL: timeout waiting for terminal status"
+          exit 1
+{{- end }}

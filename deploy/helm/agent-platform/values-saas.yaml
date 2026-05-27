@@ -37,6 +37,11 @@ billing:
 janitor:
   enabled: true
 
+# SaaS uses real WorkOS auth — the bundled dev-token smoketest can't pass.
+# Run a WorkOS-issued test JWT manually via 'helm test' if you wire it.
+tests:
+  enabled: false
+
 tenancy:
   multiTenant: true
   runtimeClassName: gvisor

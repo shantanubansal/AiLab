@@ -22,11 +22,25 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 
 	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/auth"
 	"github.com/shantanubansal/AiLab/internal/db"
 )
+
+// workosNamespace is a fixed UUIDv4 used to derive deterministic v5
+// UUIDs from WorkOS organization ids. The org id stays in tenants.slug
+// for humans; tenants.id becomes a stable UUID the platform uses as a
+// foreign key everywhere else (k8s namespace suffix, RLS, indexes).
+var workosNamespace = uuid.MustParse("8c0e8b3a-3a4f-4f9b-9c1f-3b0c1b6f3a4e")
+
+// tenantIDForOrg maps a WorkOS organization id to a deterministic
+// tenant UUID. Same org id → same UUID, so .updated / .deleted line up
+// with .created without an extra lookup.
+func tenantIDForOrg(orgID string) string {
+	return uuid.NewSHA1(workosNamespace, []byte(orgID)).String()
+}
 
 // WebhookHandler verifies + dispatches WorkOS organization events.
 type WebhookHandler struct {
@@ -65,27 +79,27 @@ func (h *WebhookHandler) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, _ := ev.Data["id"].(string)
+	orgID, _ := ev.Data["id"].(string)
 	slug, _ := ev.Data["slug"].(string)
 	name, _ := ev.Data["name"].(string)
-	if id == "" {
+	if orgID == "" {
 		http.Error(w, "missing data.id", http.StatusBadRequest)
 		return
 	}
+	tenantID := tenantIDForOrg(orgID)
 	if slug == "" {
-		// WorkOS slugs are optional; fall back to a normalized name so the
-		// unique constraint on slug doesn't collide across tenants with empty
-		// strings.
-		slug = id
+		// WorkOS slugs are optional; surface the org id so an empty
+		// slug doesn't collide on the unique constraint across tenants.
+		slug = orgID
 	}
 
 	// Synthetic identity so audit attributes the change to the platform
 	// integration rather than dropping it.
-	ctx := auth.WithIdentity(r.Context(), auth.Identity{TenantID: id, UserID: "workos:" + ev.Event})
+	ctx := auth.WithIdentity(r.Context(), auth.Identity{TenantID: tenantID, UserID: "workos:" + ev.Event})
 
 	switch ev.Event {
 	case "organization.created", "organization.updated":
-		if _, err := h.Repo.Upsert(ctx, id, slug, name); err != nil {
+		if _, err := h.Repo.Upsert(ctx, tenantID, slug, name); err != nil {
 			http.Error(w, "upsert: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -93,17 +107,18 @@ func (h *WebhookHandler) handle(w http.ResponseWriter, r *http.Request) {
 		if ev.Event == "organization.updated" {
 			action = audit.ActionUpdate
 		}
-		audit.Log(ctx, action, "tenant", id, map[string]any{
-			"slug": slug,
-			"name": name,
+		audit.Log(ctx, action, "tenant", tenantID, map[string]any{
+			"workosOrgId": orgID,
+			"slug":        slug,
+			"name":        name,
 		}, middleware.GetReqID(r.Context()))
 
 	case "organization.deleted":
-		if err := h.Repo.Delete(ctx, id); err != nil && !errors.Is(err, db.ErrNotFound) {
+		if err := h.Repo.Delete(ctx, tenantID); err != nil && !errors.Is(err, db.ErrNotFound) {
 			http.Error(w, "delete: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		audit.Log(ctx, audit.ActionDelete, "tenant", id, nil, middleware.GetReqID(r.Context()))
+		audit.Log(ctx, audit.ActionDelete, "tenant", tenantID, map[string]any{"workosOrgId": orgID}, middleware.GetReqID(r.Context()))
 
 	default:
 		// Unknown event types are acknowledged so WorkOS doesn't retry;

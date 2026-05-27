@@ -108,3 +108,25 @@ func (b *Bus) Close() {
 	}
 	b.nc.Close()
 }
+
+// SubscribeRaw is the non-JetStream subscription path. Used for
+// ephemeral live notifications (e.g. run-event SSE fan-out) where
+// every replica needs every message and we don't want at-least-once
+// redelivery semantics. Returns an unsubscribe function.
+func (b *Bus) SubscribeRaw(subject string, handler func(subject string, data []byte)) (func(), error) {
+	sub, err := b.nc.Subscribe(subject, func(m *nats.Msg) {
+		handler(m.Subject, m.Data)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return func() { _ = sub.Unsubscribe() }, nil
+}
+
+// PublishRaw is the matching non-JetStream publish path. Fire-and-
+// forget; missed messages are acceptable since the SSE client will
+// either reconnect or fall through to the cold-subscribe synthetic
+// terminal event.
+func (b *Bus) PublishRaw(subject string, payload []byte) error {
+	return b.nc.Publish(subject, payload)
+}

@@ -181,5 +181,26 @@ End-to-end paths working locally (all verified against a kind cluster):
   `GET /api/traces/{id}` returns three spans on one trace:
   `api → run.trigger → run.dispatch` (api → controller chain via NATS
   traceparent).
+- **WorkOS signed-payload smoketest** — `scripts/workos-webhook-test.sh`
+  drives organization.created/updated/deleted with real signed bodies,
+  asserts the tenant row mutates correctly, and verifies a tampered
+  signature is rejected with 401. WorkOS org ids map to platform tenant
+  UUIDs via a deterministic UUIDv5 derivation so the same org id always
+  resolves to the same tenant row.
+- **`agentctl logs <runId>`** — top-level alias for `agentctl runs logs`.
+- **`helm test ailab`** — `templates/tests/spine-smoketest.yaml` fires a
+  Pod (hook-annotated) that drives POST agent → POST run → poll-until-
+  terminal against the in-cluster api Service. Default token is dev-mode;
+  SaaS profile keeps it disabled.
+- **Cross-process Hub** — `runs.Hub` is now NATS-backed. The api replica
+  whose StatusConsumer wins the JetStream queue-group message also
+  publishes to `run.events.<runID>` on plain NATS; every api replica
+  has a wildcard subscriber that delivers to its local SSE clients.
+  Multi-replica SSE works.
+- **SDK contract tests** — `pkg/sdk-go/contract_test.go` boots an
+  httptest stub matching every endpoint in `openapi.yaml`, exercises
+  every SDK method, asserts typed structs decode every documented
+  field. 16/16 passing — catches the "I changed a DTO and forgot to
+  update the Go SDK" failure mode.
 
 See `docs/PLAN.md` for the v1 build order and what's still deferred.

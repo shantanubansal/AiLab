@@ -66,6 +66,14 @@ janitor:
     requests: { cpu: 50m, memory: 64Mi }
     limits:   { cpu: 200m, memory: 256Mi }
 
+# Post-install validation. `helm test <release>` fires the smoketest Pod
+# defined under templates/tests. Uses dev-mode auth (only meaningful when
+# auth.mode=dev); SaaS overrides keep this off by default.
+tests:
+  enabled: true
+  image: busybox:1.36
+  token: "dev:00000000-0000-0000-0000-000000000001:helm-test"
+
 # ---- External dependencies. In SaaS we expect managed Postgres / NATS;
 #      in self-host we recommend bundled Bitnami subcharts (not wired yet).
 postgres:
