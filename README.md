@@ -92,5 +92,19 @@ End-to-end paths working locally (all verified against a kind cluster):
   `/runs/{id}` (status polling + live SSE log viewer). `make web-install
   && make web-dev` launches it on `:3000`; the api enables CORS for that
   origin in dev.
+- **`agentctl` CLI** — `bin/agentctl` ships from `cmd/agentctl/`. Drives
+  the API end-to-end: `agents list/get/create/delete`, `runs trigger/get/logs`,
+  `triggers create webhook|cron`, `deploy/undeploy`, `builds create`, plus
+  `init <template>` to scaffold a new agent from `templates/`. Config via
+  `agentctl login` or `AILAB_API` + `AILAB_TOKEN` env.
+- **SDKs** — `sdks/python/ailab` (httpx-based, sync, 4 unit tests passing)
+  and `sdks/typescript/` (pure fetch, no deps, 4 unit tests passing) ship
+  the same surface as `pkg/sdk-go/`. All three power the CLI / UI / external
+  consumers; method names match across languages.
+- **Builder hardening** — `BUILDER_TRIVY_ENABLED=true` adds a Trivy scan
+  Job after Kaniko (`--severity HIGH,CRITICAL --ignore-unfixed --exit-code 1`);
+  vuln findings mark the build `blocked`. `BUILDER_COSIGN_ENABLED=true`
+  adds a cosign sign Job (key from `BUILDER_COSIGN_SECRET` Secret, optional
+  password via `cosign.password` key in the same Secret).
 
 See `docs/PLAN.md` for the v1 build order and what's still deferred.
