@@ -36,8 +36,12 @@ builder:
   replicas: 1
 
 gateway:
-  enabled: false   # off until the real implementation lands
+  enabled: false
   replicas: 1
+  domain: "run.local"
+  service:
+    type: ClusterIP
+    nodePort: 30080
 
 triggers:
   enabled: false   # off until the real implementation lands

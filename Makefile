@@ -2,7 +2,8 @@
         dev-up dev-down dev-logs migrate \
         run-api run-controller run-builder run-gateway run-triggers \
         dev-cluster dev-cluster-down crds-apply crds-delete \
-        helm-lint helm-template
+        helm-lint helm-template \
+        web-install web-dev web-build
 
 BIN_DIR := bin
 SERVICES := api controller builder gateway triggers
@@ -85,3 +86,12 @@ helm-template: ## Render the Helm chart for both profiles
 	helm template ailab deploy/helm/agent-platform -f deploy/helm/agent-platform/values-saas.yaml
 	@echo "== selfhost =="
 	helm template ailab deploy/helm/agent-platform -f deploy/helm/agent-platform/values-selfhost.yaml
+
+web-install: ## Install Next.js UI deps
+	cd web && npm install
+
+web-dev: ## Run the Next.js UI in dev mode on :3000
+	cd web && npm run dev
+
+web-build: ## Production-build the Next.js UI
+	cd web && npm run build

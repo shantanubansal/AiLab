@@ -1,0 +1,85 @@
+{{- if .Values.gateway.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-gateway
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-platform.name" . }}
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        {{- include "agent-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+    spec:
+      serviceAccountName: {{ include "agent-platform.fullname" . }}-gateway
+      containers:
+        - name: gateway
+          image: {{ include "agent-platform.image" (dict "Values" .Values "component" "gateway") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8083
+          env:
+            - name: GATEWAY_LISTEN_ADDR
+              value: ":8083"
+            - name: GATEWAY_DOMAIN
+              value: {{ .Values.gateway.domain | quote }}
+            - name: GATEWAY_USE_K8S_PROXY
+              value: "false"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-gateway
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  type: {{ .Values.gateway.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "agent-platform.name" . }}
+    app.kubernetes.io/component: gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8083
+      {{- if eq .Values.gateway.service.type "NodePort" }}
+      nodePort: {{ .Values.gateway.service.nodePort }}
+      {{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-gateway
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-gateway
+rules:
+  - apiGroups: ["ailab.uipath.com"]
+    resources: ["agentdeployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agent-platform.fullname" . }}-gateway
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agent-platform.fullname" . }}-gateway
+    namespace: {{ .Release.Namespace }}
+{{- end }}

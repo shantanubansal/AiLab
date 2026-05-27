@@ -76,7 +76,21 @@ End-to-end paths working locally (all verified against a kind cluster):
   Kaniko `Job` in the `ailab-builds` namespace, polls to terminal, writes
   `builds` and pivots the agent's `image`. Trivy + cosign hooks reserved
   but no-op in v1. Needs `BUILDER_REGISTRY` set for the push to succeed.
+- **AgentDeployment** — `POST /v1/agents/{id}/deploy` publishes
+  `deployment.requested`; controller materializes an `AgentDeployment` CR;
+  reconciler projects to `Deployment` + `Service` via
+  `controllerutil.CreateOrUpdate` (in-place mutate, so k8s-filled defaults
+  survive across reconciles — no ReplicaSet thrash). `DELETE /deploy`
+  publishes `deployment.stopped`.
+- **Gateway** — `cmd/gateway` parses `Host: <agent>.<tenant>.<domain>`,
+  looks up the `AgentDeployment` via k8s, reverse-proxies to the in-cluster
+  `Service`. Runs in-cluster on a `ClusterIP` (or `NodePort` for kind) and
+  auto-switches to `apiserver/proxy` URLs when run outside the cluster.
+  Local-test: `curl -H "Host: <agent>.<tenant>.run.local" http://localhost:8083/`.
+- **UI** — Next.js 15 app at `web/`. Pages: `/login` (token entry),
+  `/agents` (list + create), `/agents/{id}` (runs + triggers + create),
+  `/runs/{id}` (status polling + live SSE log viewer). `make web-install
+  && make web-dev` launches it on `:3000`; the api enables CORS for that
+  origin in dev.
 
-What's still stubbed: the `gateway` service (MCP hosting / `AgentDeployment`
-reconciler is wired but no ingress yet); the Next.js UI. See `docs/PLAN.md`
-for the build order.
+See `docs/PLAN.md` for the v1 build order and what's still deferred.

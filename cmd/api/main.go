@@ -99,6 +99,7 @@ func main() {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
+	r.Use(auth.CORS(auth.DefaultCORSOrigins()))
 	r.Use(middleware.Timeout(30 * time.Second))
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -120,6 +121,9 @@ func main() {
 
 		agentH := &agents.Handlers{Repo: agentRepo}
 		r.Route("/agents", agentH.Routes)
+
+		deployH := &agents.DeployHandlers{Repo: agentRepo, Bus: bus}
+		r.Route("/agents/{agentId}/deploy", deployH.Routes)
 
 		runH := &runs.Handlers{Runs: runRepo, Agents: agentRepo, Bus: bus, K8s: k8sClient}
 		runH.Routes(r)

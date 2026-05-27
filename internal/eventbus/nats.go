@@ -42,7 +42,7 @@ func Connect(ctx context.Context, url string) (*Bus, error) {
 	}
 	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:      "ailab",
-		Subjects:  []string{"run.>", "build.>"},
+		Subjects:  []string{"run.>", "build.>", "deployment.>"},
 		Retention: jetstream.LimitsPolicy,
 		MaxAge:    7 * 24 * time.Hour,
 		Storage:   jetstream.FileStorage,

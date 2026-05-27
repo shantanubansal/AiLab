@@ -18,6 +18,10 @@ builder:
 gateway:
   enabled: true
   replicas: 2
+  domain: "run.example.com"
+  service:
+    type: ClusterIP
+    nodePort: 30080
 
 triggers:
   enabled: true

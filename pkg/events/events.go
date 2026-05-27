@@ -14,6 +14,9 @@ const (
 
 	SubjectBuildRequested = "build.requested"
 	SubjectBuildCompleted = "build.completed"
+
+	SubjectDeploymentRequested = "deployment.requested"
+	SubjectDeploymentStopped   = "deployment.stopped"
 )
 
 // RunRequested fires after the api persists a Run row with status=pending.
@@ -78,6 +81,28 @@ const (
 	BuildStatusFailed    BuildStatus = "failed"
 	BuildStatusBlocked   BuildStatus = "blocked" // failed scan / signature
 )
+
+// DeploymentRequested is published when a mode=server agent should be
+// brought up as a long-running Deployment + Service. The controller
+// materializes it into an AgentDeployment CR.
+type DeploymentRequested struct {
+	TenantID  string    `json:"tenantId"`
+	AgentID   string    `json:"agentId"`
+	AgentName string    `json:"agentName"`
+	Image     string    `json:"image"`
+	Port      int32     `json:"port"`
+	HealthPath string   `json:"healthPath,omitempty"`
+	At        time.Time `json:"at"`
+}
+
+// DeploymentStopped is published when an agent's long-running deployment
+// should be torn down (DELETE /deploy or agent deletion).
+type DeploymentStopped struct {
+	TenantID  string    `json:"tenantId"`
+	AgentID   string    `json:"agentId"`
+	AgentName string    `json:"agentName"`
+	At        time.Time `json:"at"`
+}
 
 // BuildCompleted fires when the builder finishes. Image is only set when Status==succeeded.
 type BuildCompleted struct {

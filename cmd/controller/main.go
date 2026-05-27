@@ -64,16 +64,29 @@ func main() {
 		logger.Error(err, "setup AgentRun reconciler")
 		os.Exit(1)
 	}
+	if err := (&runs.AgentDeploymentReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "setup AgentDeployment reconciler")
+		os.Exit(1)
+	}
 
-	// The dispatch consumer needs a working client; it can run alongside
-	// the manager. We wire it to start once the manager's cache is ready.
+	// Dispatch consumers need a working client; they run alongside the
+	// manager and start once it's elected.
 	go func() {
 		<-mgr.Elected()
-		dc := &runs.DispatchConsumer{Client: mgr.GetClient()}
-		if err := dc.Start(rootCtx, bus); err != nil {
-			logger.Error(err, "dispatch consumer start")
+		runDC := &runs.DispatchConsumer{Client: mgr.GetClient()}
+		if err := runDC.Start(rootCtx, bus); err != nil {
+			logger.Error(err, "run dispatch consumer")
 		} else {
-			logger.Info("dispatch consumer subscribed")
+			logger.Info("run dispatch consumer subscribed")
+		}
+		depDC := &runs.DeploymentDispatchConsumer{Client: mgr.GetClient()}
+		if err := depDC.Start(rootCtx, bus); err != nil {
+			logger.Error(err, "deployment dispatch consumer")
+		} else {
+			logger.Info("deployment dispatch consumer subscribed")
 		}
 	}()
 
