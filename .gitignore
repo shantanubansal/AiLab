@@ -1,0 +1,43 @@
+# Go
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local infra
+.local/
+*.log
+
+# Build artifacts
+/web/.next/
+/sdks/python/dist/
+/sdks/typescript/dist/
+
+# Generated code (regenerate from spec/proto)
+/internal/api/oapi_gen.go
+/internal/api/grpc/*.pb.go

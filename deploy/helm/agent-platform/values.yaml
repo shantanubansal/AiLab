@@ -1,0 +1,95 @@
+# Default values for agent-platform. The two profile overlays
+# (values-saas.yaml and values-selfhost.yaml) toggle multi-tenant /
+# isolation / auth knobs on top of these defaults.
+
+# profile is informational and surfaces in dashboards.
+profile: dev
+
+image:
+  registry: ghcr.io/shantanubansal/ailab
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# ---- Per-service deployment knobs ----
+api:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+  env: {}
+
+controller:
+  enabled: true
+  replicas: 1
+  leaderElect: false
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+builder:
+  enabled: false   # off until the real implementation lands
+  replicas: 1
+
+gateway:
+  enabled: false   # off until the real implementation lands
+  replicas: 1
+
+triggers:
+  enabled: false   # off until the real implementation lands
+  replicas: 1
+
+# ---- External dependencies. In SaaS we expect managed Postgres / NATS;
+#      in self-host we recommend bundled Bitnami subcharts (not wired yet).
+postgres:
+  url: postgres://ailab:ailab@postgres:5432/ailab?sslmode=disable
+
+nats:
+  url: nats://nats:4222
+
+# ---- Tenancy + isolation policy ----
+tenancy:
+  # multiTenant=true: api enforces tenant claims; controller creates namespaced
+  # resources per tenant. false: single-tenant; everything lands in releaseNamespace.
+  multiTenant: false
+  # gVisor runtime class to apply to user pods. Empty => use default runtime.
+  runtimeClassName: ""
+  # NetworkPolicy default-deny in tenant namespaces.
+  defaultDenyEgress: false
+  # Resource quota applied to each tenant namespace.
+  defaultQuota:
+    cpu: "8"
+    memory: "16Gi"
+    pods: "50"
+
+# ---- Auth ----
+auth:
+  # mode: dev | workos | oidc
+  mode: dev
+  workos:
+    apiKeySecretName: ""    # k8s Secret containing key "apiKey"
+    clientId: ""
+    jwksUrl: ""
+  oidc:
+    issuerUrl: ""
+    audience: ""
+
+# ---- Abuse controls (SaaS only) ----
+abuse:
+  enabled: false
+  egressAllowlist: []        # CIDRs or hosts permitted outbound from tenant pods
+  maxRunSeconds: 1800
+  maxRunsPerHour: 60
+
+# ---- Observability ----
+observability:
+  metrics:
+    enabled: true
+  logs:
+    lokiUrl: ""
+  traces:
+    tempoUrl: ""

@@ -1,0 +1,52 @@
+# SaaS profile: multi-tenant, gVisor sandboxing, WorkOS auth, abuse controls on.
+profile: saas
+
+api:
+  replicas: 3
+  resources:
+    requests: { cpu: 500m, memory: 512Mi }
+    limits:   { cpu: 2,    memory: 2Gi }
+
+controller:
+  replicas: 2
+  leaderElect: true
+
+builder:
+  enabled: true
+  replicas: 2
+
+gateway:
+  enabled: true
+  replicas: 2
+
+triggers:
+  enabled: true
+  replicas: 2
+
+tenancy:
+  multiTenant: true
+  runtimeClassName: gvisor
+  defaultDenyEgress: true
+  defaultQuota:
+    cpu: "8"
+    memory: "16Gi"
+    pods: "50"
+
+auth:
+  mode: workos
+  workos:
+    apiKeySecretName: workos-credentials
+    clientId: ""        # set per-environment via --set
+    jwksUrl: ""         # set per-environment via --set
+
+abuse:
+  enabled: true
+  egressAllowlist:
+    - api.anthropic.com
+    - api.openai.com
+    - generativelanguage.googleapis.com
+  maxRunSeconds: 1800
+  maxRunsPerHour: 60
+
+observability:
+  metrics: { enabled: true }

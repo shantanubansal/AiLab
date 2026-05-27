@@ -1,0 +1,74 @@
+{{- if .Values.controller.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-controller
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-platform.name" . }}
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        {{- include "agent-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+    spec:
+      serviceAccountName: {{ include "agent-platform.fullname" . }}-controller
+      containers:
+        - name: controller
+          image: {{ include "agent-platform.image" (dict "Values" .Values "component" "controller") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: CONTROLLER_LEADER_ELECT
+              value: {{ .Values.controller.leaderElect | quote }}
+            - name: CONTROLLER_METRICS_ADDR
+              value: ":8081"
+          ports:
+            - name: metrics
+              containerPort: 8081
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-controller
+  labels:
+    {{- include "agent-platform.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-controller
+rules:
+  - apiGroups: ["ailab.uipath.com"]
+    resources: ["agentruns", "agentruns/status", "agentdeployments", "agentdeployments/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "secrets", "configmaps", "namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agent-platform.fullname" . }}-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agent-platform.fullname" . }}-controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agent-platform.fullname" . }}-controller
+    namespace: {{ .Release.Namespace }}
+{{- end }}

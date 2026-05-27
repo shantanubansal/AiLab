@@ -1,0 +1,16 @@
+apiVersion: v2
+name: agent-platform
+description: |
+  AiLab agent platform — api, controller, and supporting services for
+  running code, container, and MCP-server agents on Kubernetes. Same
+  chart serves both the managed SaaS profile and the OSS self-host profile.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - agents
+  - ai
+  - mcp
+  - platform
+sources:
+  - https://github.com/shantanubansal/AiLab

@@ -1,0 +1,41 @@
+schemaVersion: v1
+name: hello-llm
+mode: job
+runtime: python
+
+# Inputs are validated against this schema before the agent is invoked.
+# The platform pipes the validated JSON to your agent on stdin.
+inputs:
+  type: object
+  required: [question]
+  properties:
+    question:
+      type: string
+
+# Outputs are read from your agent's stdout (last valid JSON line) and
+# stored alongside the run. Anything you log to stderr lands in Loki.
+outputs:
+  type: object
+  required: [answer]
+  properties:
+    answer:
+      type: string
+
+# Secrets referenced here are mounted as environment variables at run time.
+# Create them with: ailab secrets set ANTHROPIC_API_KEY ...
+secrets:
+  - ANTHROPIC_API_KEY
+
+resources:
+  cpu: "500m"
+  memory: "512Mi"
+  timeout: "5m"
+
+triggers:
+  - kind: manual
+  # Uncomment to expose a signed webhook URL:
+  # - kind: webhook
+  #   name: incoming
+  # Or run on a schedule (UTC):
+  # - kind: cron
+  #   cron: "*/15 * * * *"

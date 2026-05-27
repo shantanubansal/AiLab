@@ -1,0 +1,27 @@
+# Self-host profile: single-tenant defaults, optional gVisor, BYO auth via OIDC,
+# no abuse pipeline. Designed for an org running the platform on its own cluster.
+profile: selfhost
+
+api:
+  replicas: 1
+controller:
+  replicas: 1
+  leaderElect: false
+
+# Same chart, just everything in one namespace, no per-tenant isolation by default.
+tenancy:
+  multiTenant: false
+  runtimeClassName: ""        # set to "gvisor" if available in the cluster
+  defaultDenyEgress: false
+
+auth:
+  mode: oidc
+  oidc:
+    issuerUrl: ""             # required: e.g. https://login.example.com/
+    audience: ailab
+
+abuse:
+  enabled: false
+
+observability:
+  metrics: { enabled: true }

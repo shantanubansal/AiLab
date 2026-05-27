@@ -1,0 +1,307 @@
+openapi: 3.1.0
+info:
+  title: AiLab Agent Platform API
+  version: 0.1.0
+  summary: Public REST surface for the hosted agent platform.
+  description: |
+    All endpoints require a bearer JWT issued by WorkOS. The token's
+    `org_id` claim is mapped to the platform's tenant id; all reads and
+    writes are scoped to that tenant.
+
+servers:
+  - url: https://api.ailab.example.com
+    description: Managed SaaS
+  - url: http://localhost:8080
+    description: Local dev
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: agents
+  - name: runs
+  - name: builds
+  - name: triggers
+  - name: secrets
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe (unauthenticated)
+      security: []
+      responses:
+        "200": { description: ok }
+
+  /v1/agents:
+    get:
+      tags: [agents]
+      summary: List agents in the caller's tenant
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items: { $ref: "#/components/schemas/Agent" }
+    post:
+      tags: [agents]
+      summary: Create an agent from a manifest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAgentRequest" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+
+  /v1/agents/{agentId}:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    get:
+      tags: [agents]
+      summary: Get an agent
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+    delete:
+      tags: [agents]
+      summary: Delete an agent (and stop any deployments)
+      responses:
+        "204": { description: deleted }
+
+  /v1/agents/{agentId}/runs:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    get:
+      tags: [runs]
+      summary: List recent runs of this agent
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: "#/components/schemas/Run" }
+    post:
+      tags: [runs]
+      summary: Trigger a manual run
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inputs: { type: object, additionalProperties: true }
+      responses:
+        "202":
+          description: queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Run" }
+
+  /v1/runs/{runId}:
+    parameters:
+      - $ref: "#/components/parameters/RunId"
+    get:
+      tags: [runs]
+      summary: Get a run
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Run" }
+
+  /v1/runs/{runId}/logs:
+    parameters:
+      - $ref: "#/components/parameters/RunId"
+    get:
+      tags: [runs]
+      summary: Stream logs for a run as text/event-stream
+      responses:
+        "200":
+          description: log stream
+          content:
+            text/event-stream: {}
+
+  /v1/agents/{agentId}/builds:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    post:
+      tags: [builds]
+      summary: Trigger a build from source (git URL or uploaded tarball)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceUrl]
+              properties:
+                sourceUrl: { type: string, format: uri }
+      responses:
+        "202":
+          description: queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Build" }
+
+  /v1/agents/{agentId}/webhooks/{webhookName}:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+      - in: path
+        name: webhookName
+        required: true
+        schema: { type: string }
+    post:
+      tags: [triggers]
+      summary: Inbound webhook trigger (signature required)
+      security: []
+      parameters:
+        - in: header
+          name: X-AiLab-Signature
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { type: object, additionalProperties: true } }
+      responses:
+        "202":
+          description: queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Run" }
+
+  /v1/secrets:
+    get:
+      tags: [secrets]
+      summary: List secret names visible to the caller's tenant
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secrets:
+                    type: array
+                    items: { $ref: "#/components/schemas/SecretRef" }
+    post:
+      tags: [secrets]
+      summary: Create or update a secret (value never returned afterward)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, value]
+              properties:
+                name: { type: string }
+                value: { type: string }
+      responses:
+        "201":
+          description: stored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecretRef" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    AgentId:
+      in: path
+      name: agentId
+      required: true
+      schema: { type: string, format: uuid }
+    RunId:
+      in: path
+      name: runId
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    Agent:
+      type: object
+      required: [id, name, mode, runtime, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        mode: { type: string, enum: [job, server] }
+        runtime: { type: string, enum: [python, typescript, container] }
+        image: { type: string, nullable: true }
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: Public URL for mode=server agents (e.g. MCP endpoint).
+        createdAt: { type: string, format: date-time }
+
+    CreateAgentRequest:
+      type: object
+      required: [manifest]
+      properties:
+        manifest:
+          type: object
+          description: A uipath-agent.yaml as JSON. See pkg/manifest for schema.
+          additionalProperties: true
+
+    Run:
+      type: object
+      required: [id, agentId, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, timed_out, cancelled]
+        inputs: { type: object, additionalProperties: true, nullable: true }
+        outputs: { type: object, additionalProperties: true, nullable: true }
+        exitCode: { type: integer, nullable: true }
+        traceId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time, nullable: true }
+        endedAt: { type: string, format: date-time, nullable: true }
+
+    Build:
+      type: object
+      required: [id, agentId, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, blocked]
+        image: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time, nullable: true }
+
+    SecretRef:
+      type: object
+      required: [name, createdAt]
+      properties:
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
