@@ -26,6 +26,7 @@ import (
 type StatusConsumer struct {
 	Repo   *Repo
 	Usage  *usage.Repo
+	Hub    *Hub
 	Logger *zap.Logger
 }
 
@@ -60,6 +61,10 @@ func (c *StatusConsumer) handleStarted(ctx context.Context, data []byte) error {
 			c.Logger.Warn("usage run.start", zap.String("runId", ev.RunID), zap.Error(err))
 		}
 	}
+	if c.Hub != nil {
+		evCopy := ev
+		c.Hub.Broadcast(ev.RunID, RunEvent{Kind: "started", Started: &evCopy})
+	}
 	return nil
 }
 
@@ -91,6 +96,10 @@ func (c *StatusConsumer) handleCompleted(ctx context.Context, data []byte) error
 			seconds = 0
 		}
 		_ = c.Usage.RecordRun(ctx, ev.TenantID, ev.AgentID, ev.RunID, usage.KindRunSeconds, seconds, endedAt)
+	}
+	if c.Hub != nil {
+		evCopy := ev
+		c.Hub.Broadcast(ev.RunID, RunEvent{Kind: "completed", Completed: &evCopy})
 	}
 	return nil
 }

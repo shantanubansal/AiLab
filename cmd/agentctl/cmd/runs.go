@@ -14,7 +14,7 @@ import (
 
 func runsCmd() *cobra.Command {
 	c := &cobra.Command{Use: "runs", Short: "Manage runs"}
-	c.AddCommand(runsListCmd(), runsTriggerCmd(), runsGetCmd(), runsLogsCmd())
+	c.AddCommand(runsListCmd(), runsTriggerCmd(), runsGetCmd(), runsLogsCmd(), runsWaitCmd())
 	return c
 }
 
@@ -120,4 +120,49 @@ func runsLogsCmd() *cobra.Command {
 			})
 		},
 	}
+}
+
+func runsWaitCmd() *cobra.Command {
+	var timeout time.Duration
+	var pollEvery time.Duration
+	c := &cobra.Command{
+		Use:   "wait <runId>",
+		Short: "Poll a run until it reaches a terminal state; exit 0 if succeeded",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cl, err := clientFromFlags(cmd)
+			if err != nil {
+				return err
+			}
+			ctx, cancel := ctxFromCmd()
+			defer cancel()
+			deadline := time.Now().Add(timeout)
+			for {
+				r, err := cl.GetRun(ctx, args[0])
+				if err != nil {
+					return err
+				}
+				switch r.Status {
+				case "succeeded":
+					_ = writeJSON(r)
+					return nil
+				case "failed", "timed_out", "cancelled":
+					_ = writeJSON(r)
+					// Distinct non-zero so callers can tell terminal-error from poll-error.
+					return fmt.Errorf("run ended: %s", r.Status)
+				}
+				if time.Now().After(deadline) {
+					return fmt.Errorf("timed out after %s; last status: %s", timeout, r.Status)
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(pollEvery):
+				}
+			}
+		},
+	}
+	c.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "maximum time to wait")
+	c.Flags().DurationVar(&pollEvery, "poll-every", 2*time.Second, "interval between status checks")
+	return c
 }

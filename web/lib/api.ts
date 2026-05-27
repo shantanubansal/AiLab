@@ -122,6 +122,49 @@ export const api = {
   undeploy: (agentId: string) =>
     fetch(`${API_BASE}/v1/agents/${agentId}/deploy`, { method: "DELETE", headers: authHeader() }),
 
+  // streamEvents subscribes to /v1/runs/{id}/events. Each frame becomes
+  // one onEvent call (started | completed) with the parsed payload.
+  // Resolves when the stream closes (terminal run state) or signal aborts.
+  streamEvents: async (
+    runId: string,
+    signal: AbortSignal,
+    onEvent: (name: string, data: unknown) => void
+  ) => {
+    const res = await fetch(`${API_BASE}/v1/runs/${runId}/events`, {
+      headers: authHeader(),
+      signal,
+    });
+    if (!res.ok || !res.body) {
+      throw new Error(`events: ${res.status} ${res.statusText}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n\n")) >= 0) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        let name = "message";
+        let dataLine = "";
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("event: ")) name = line.slice(7).trim();
+          else if (line.startsWith("data: ")) dataLine = line.slice(6);
+        }
+        if (dataLine) {
+          try {
+            onEvent(name, JSON.parse(dataLine));
+          } catch {
+            // ignore unparseable frame
+          }
+        }
+      }
+    }
+  },
+
   // streamLogs returns a ReadableStream that yields parsed SSE "data:" lines.
   // EventSource can't send Authorization headers, so we use fetch instead.
   streamLogs: async (runId: string, signal: AbortSignal, onLine: (line: string) => void) => {

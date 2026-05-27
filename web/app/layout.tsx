@@ -2,6 +2,8 @@ import "./globals.css";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { MeBadge } from "./me-badge";
+
 export const metadata = {
   title: "AiLab — Agent Platform",
 };
@@ -19,7 +21,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               agent platform
             </span>
           </div>
-          <div>
+          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+            <MeBadge />
             <Link href="/login" className="muted">
               token
             </Link>

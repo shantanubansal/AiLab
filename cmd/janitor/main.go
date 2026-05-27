@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/shantanubansal/AiLab/internal/audit"
 	"github.com/shantanubansal/AiLab/internal/config"
 	"github.com/shantanubansal/AiLab/internal/db"
 	"github.com/shantanubansal/AiLab/internal/kube"
@@ -50,12 +51,24 @@ func main() {
 		log.Fatalf("kube client: %v", err)
 	}
 
+	exporter, err := audit.NewExporter(rootCtx, pool, audit.ExporterConfig{
+		Bucket: os.Getenv("AUDIT_EXPORT_BUCKET"),
+		Prefix: os.Getenv("AUDIT_EXPORT_PREFIX"),
+		Region: os.Getenv("AWS_REGION"),
+	})
+	if err != nil {
+		log.Fatalf("audit exporter: %v", err)
+	}
+	auditExportInterval := envDuration("JANITOR_AUDIT_EXPORT_INTERVAL", 24*time.Hour)
+
 	j := &janitor{
-		pool:       pool.Pool,
-		kube:       k8sClient,
-		jobTTL:     jobTTL,
-		buildStuck: buildStuck,
-		usageTTL:   usageTTL,
+		pool:                pool.Pool,
+		kube:                k8sClient,
+		jobTTL:              jobTTL,
+		buildStuck:          buildStuck,
+		usageTTL:            usageTTL,
+		auditExporter:       exporter,
+		auditExportInterval: auditExportInterval,
 	}
 
 	log.Printf("janitor running (interval=%s jobTTL=%s buildStuck=%s usageTTL=%s)",
@@ -75,11 +88,14 @@ func main() {
 }
 
 type janitor struct {
-	pool       *pgxpool.Pool
-	kube       kubernetes.Interface
-	jobTTL     time.Duration
-	buildStuck time.Duration
-	usageTTL   time.Duration
+	pool                *pgxpool.Pool
+	kube                kubernetes.Interface
+	jobTTL              time.Duration
+	buildStuck          time.Duration
+	usageTTL            time.Duration
+	auditExporter       *audit.Exporter
+	auditExportInterval time.Duration
+	lastAuditExport     time.Time
 }
 
 func (j *janitor) tick(ctx context.Context) {
@@ -87,6 +103,23 @@ func (j *janitor) tick(ctx context.Context) {
 	j.gcOrphanSecrets(ctx)
 	j.failStuckBuilds(ctx)
 	j.gcUsageEvents(ctx)
+	j.exportAudit(ctx)
+}
+
+// exportAudit runs the audit log S3 exporter every auditExportInterval.
+// Cheap no-op when the exporter is nil (AUDIT_EXPORT_BUCKET unset).
+func (j *janitor) exportAudit(ctx context.Context) {
+	if j.auditExporter == nil {
+		return
+	}
+	if time.Since(j.lastAuditExport) < j.auditExportInterval {
+		return
+	}
+	if err := j.auditExporter.Run(ctx); err != nil {
+		log.Printf("janitor: audit export: %v", err)
+		return
+	}
+	j.lastAuditExport = time.Now()
 }
 
 // gcJobs deletes batch Jobs across tenant-* namespaces whose completion

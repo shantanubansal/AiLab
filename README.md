@@ -161,5 +161,25 @@ End-to-end paths working locally (all verified against a kind cluster):
   first-class Deployments + RBAC in the chart, gated behind
   `billing.enabled` and `janitor.enabled` (both on in the SaaS profile,
   off in selfhost).
+- **`agentctl runs wait`** — polls a run until terminal, prints final
+  state, exits non-zero on failed / timed_out / cancelled. Common
+  scripting need.
+- **UI tenant badge** — the layout header now shows `tenant.name · userId`
+  via a small client component that hits `/v1/me` on mount.
+- **SSE run events** — `GET /v1/runs/{id}/events` streams a tiny in-process
+  fan-out of `run.started` / `run.completed` so the UI's run detail
+  page no longer polls every 1.5s; resolves the moment the run is
+  terminal. Same fetch-streaming pattern as `/logs` so the bearer
+  token rides in `Authorization` rather than a URL parameter.
+- **Audit S3 export** — janitor's loop now runs a daily exporter that
+  reads new `audit_events` past the per-destination checkpoint, gzips
+  them as JSON Lines, and uploads to
+  `s3://$AUDIT_EXPORT_BUCKET/$AUDIT_EXPORT_PREFIX/dt=YYYY-MM-DD/<batch>.jsonl.gz`.
+  Skip-silently when bucket is empty.
+- **Tempo verified** — install `grafana/tempo` (monolithic), point api +
+  controller at it via `OTEL_EXPORTER_OTLP_ENDPOINT`, trigger a run, and
+  `GET /api/traces/{id}` returns three spans on one trace:
+  `api → run.trigger → run.dispatch` (api → controller chain via NATS
+  traceparent).
 
 See `docs/PLAN.md` for the v1 build order and what's still deferred.

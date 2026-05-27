@@ -102,12 +102,13 @@ func main() {
 	}
 
 	usageRepo := usage.NewRepo(pool)
+	runHub := runs.NewHub()
 
 	// Status-feedback consumer: applies run.started / run.completed messages
-	// from the controller back into the runs table, and also writes usage
-	// metering rows. Runs in a goroutine for the process lifetime; errors
-	// are logged but do not crash the api.
-	statusCons := &runs.StatusConsumer{Repo: runRepo, Usage: usageRepo, Logger: logger}
+	// from the controller back into the runs table, writes usage metering
+	// rows, and fans events out to the in-process Hub that powers the
+	// /v1/runs/{id}/events SSE endpoint.
+	statusCons := &runs.StatusConsumer{Repo: runRepo, Usage: usageRepo, Hub: runHub, Logger: logger}
 	if err := statusCons.Start(rootCtx, bus); err != nil {
 		logger.Fatal("status consumer", zap.Error(err))
 	}
@@ -164,7 +165,7 @@ func main() {
 		deployH := &agents.DeployHandlers{Repo: agentRepo, Bus: bus, K8s: k8sClient, Secrets: secretRepo}
 		r.Route("/agents/{agentId}/deploy", deployH.Routes)
 
-		runH := &runs.Handlers{Runs: runRepo, Agents: agentRepo, Bus: bus, K8s: k8sClient, Secrets: secretRepo, Loki: lokiClient}
+		runH := &runs.Handlers{Runs: runRepo, Agents: agentRepo, Bus: bus, K8s: k8sClient, Secrets: secretRepo, Loki: lokiClient, Hub: runHub}
 		runH.Routes(r)
 
 		r.Route("/agents/{agentId}/triggers", triggerH.AuthRoutes)

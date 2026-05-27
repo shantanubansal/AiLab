@@ -41,6 +41,7 @@ type Handlers struct {
 	K8s     kubernetes.Interface
 	Secrets *secrets.Repo
 	Loki    *loki.Client
+	Hub     *Hub
 }
 
 // Routes mounts run handlers on a chi router rooted at /v1.
@@ -52,6 +53,7 @@ func (h *Handlers) Routes(r chi.Router) {
 	r.Route("/runs/{runId}", func(r chi.Router) {
 		r.Get("/", h.get)
 		r.Get("/logs", h.logs)
+		r.Get("/events", h.streamEvents)
 	})
 }
 

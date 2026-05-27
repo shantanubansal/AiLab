@@ -22,28 +22,47 @@ export default function RunDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const logsRef = useRef<HTMLPreElement>(null);
 
-  // Status polling — runs until the run reaches a terminal state.
+  // Status: one fetch on mount for the snapshot, then live updates via
+  // /v1/runs/{id}/events SSE until the run is terminal.
   useEffect(() => {
     if (!getToken()) {
       router.push("/login");
       return;
     }
-    let stopped = false;
-    async function tick() {
+    let cancelled = false;
+    const ctrl = new AbortController();
+    (async () => {
       try {
-        const r = await api.getRun(id);
-        if (stopped) return;
-        setRun(r);
-        if (["pending", "running"].includes(r.status)) {
-          setTimeout(tick, 1500);
+        const initial = await api.getRun(id);
+        if (cancelled) return;
+        setRun(initial);
+        if (["pending", "running"].includes(initial.status)) {
+          await api.streamEvents(id, ctrl.signal, (name, data) => {
+            const ev = data as { runId?: string; status?: Run["status"]; exitCode?: number; startedAt?: string; endedAt?: string };
+            setRun((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: ev.status ?? (name === "completed" ? "succeeded" : prev.status),
+                    startedAt: ev.startedAt ?? prev.startedAt,
+                    endedAt: ev.endedAt ?? prev.endedAt,
+                    exitCode: ev.exitCode ?? prev.exitCode,
+                  }
+                : prev
+            );
+            if (name === "completed") {
+              // Re-fetch the full row so outputs/error/exitCode are populated.
+              api.getRun(id).then((r) => !cancelled && setRun(r)).catch(() => {});
+            }
+          });
         }
       } catch (e) {
-        if (!stopped) setErr(String(e));
+        if (!cancelled) setErr(String(e));
       }
-    }
-    tick();
+    })();
     return () => {
-      stopped = true;
+      cancelled = true;
+      ctrl.abort();
     };
   }, [id, router]);
 
